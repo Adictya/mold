@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug",
+      "type": "codelldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/zig-renderer/zig-out/bin/zig-renderer",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
