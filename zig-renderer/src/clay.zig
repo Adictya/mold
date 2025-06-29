@@ -1,9 +1,10 @@
+const example = @import("example.zig");
 const clay = @import("zclay");
 const std = @import("std");
 const renderer = @import("termrender.zig");
 
 const light_grey: clay.Color = .{ 224, 215, 210, 255 };
-const red: clay.Color = .{ 168, 66, 28, 255 };
+const red: clay.Color = .{ 255, 66, 28, 255 };
 const orange: clay.Color = .{ 225, 138, 50, 255 };
 const white: clay.Color = .{ 250, 250, 255, 255 };
 
@@ -22,14 +23,25 @@ fn createLayout() []clay.RenderCommand {
     clay.beginLayout();
     clay.UI()(.{
         .id = .ID("OuterContainer"),
-        .layout = .{ .direction = .left_to_right, .sizing = .grow, .padding = .all(16), .child_gap = 16 },
-        .background_color = white,
+        .layout = .{
+            .direction = .left_to_right,
+            .sizing = .{
+                .h = .grow,
+                .w = .fixed(200),
+            },
+            .padding = .all(16),
+            .child_gap = 16,
+        },
+        .background_color = light_grey,
     })({
         clay.UI()(.{
             .id = .ID("SideBar"),
             .layout = .{
                 .direction = .top_to_bottom,
-                .sizing = .{ .h = .grow, .w = .fixed(300) },
+                .sizing = .{
+                    .h = .grow,
+                    .w = .fixed(100),
+                },
                 .padding = .all(16),
                 .child_alignment = .{ .x = .center, .y = .top },
                 .child_gap = 16,
@@ -71,13 +83,62 @@ fn createSimpleLayout() []clay.RenderCommand {
         .layout = .{
             .direction = .top_to_bottom,
             .sizing = .{ .h = .fixed(20), .w = .fixed(100) },
-            .padding = .all(16),
+            // .padding = .{ .top = 1, .left = 1 },
+            .child_alignment = .{ .x = .center, .y = .center },
             .child_gap = 16,
         },
         .background_color = white,
     })({
         clay.text("Clay - UI Library", .{ .font_size = 24, .color = light_grey });
     });
+    return clay.endLayout();
+}
+
+fn createLayout2() []clay.RenderCommand {
+    clay.beginLayout();
+
+    const borderCharacters = renderer.BorderCharacters{};
+
+    clay.UI()(.{
+        .id = .ID("OuterContainer"),
+        .border = .{
+            .width = .all(1),
+            .color = white,
+        },
+        .layout = .{
+            .direction = .top_to_bottom,
+            .sizing = .{
+                .h = .fixed(20),
+                .w = .fixed(80),
+            },
+            .child_alignment = .{
+                .x = .center,
+                .y = .center,
+            },
+            .child_gap = 2,
+        },
+        .user_data = @ptrCast(@constCast(&borderCharacters)),
+        .background_color = white,
+        .clip = .{ .vertical = true, .horizontal = true },
+    })({
+        clay.UI()(.{
+            .id = .ID("Header"),
+            .layout = .{
+                .sizing = .{
+                    .h = .fixed(35),
+                    .w = .grow,
+                },
+                .child_alignment = .{
+                    .x = .center,
+                    .y = .center,
+                },
+            },
+            .background_color = orange,
+        })({
+            clay.text("Clay - UI Library", .{ .font_size = 1, .color = red });
+        });
+    });
+
     return clay.endLayout();
 }
 
@@ -90,5 +151,5 @@ pub fn init() !void {
     const arena: clay.Arena = clay.createArenaWithCapacityAndMemory(memory);
     _ = clay.initialize(arena, .{ .h = 100, .w = 100 }, .{});
     clay.setMeasureTextFunction(void, {}, renderer.consoleMeasureText);
-    renderer.clayTerminalRender(createSimpleLayout(), 100, 100) catch unreachable;
+    renderer.clayTerminalRender(example.funLayout(), 96, 100) catch unreachable;
 }

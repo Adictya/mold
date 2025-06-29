@@ -24,13 +24,13 @@ const AnsiColor = struct {
 };
 
 const ANSI_COLORS = [_]AnsiColor{
-    .{ .r = 0, .g = 0, .b = 0, .ansi = BG_BLACK },       // Black
-    .{ .r = 128, .g = 0, .b = 0, .ansi = BG_RED },       // Red
-    .{ .r = 0, .g = 128, .b = 0, .ansi = BG_GREEN },     // Green
-    .{ .r = 128, .g = 128, .b = 0, .ansi = BG_YELLOW },  // Yellow
-    .{ .r = 0, .g = 0, .b = 128, .ansi = BG_BLUE },      // Blue
+    .{ .r = 0, .g = 0, .b = 0, .ansi = BG_BLACK }, // Black
+    .{ .r = 128, .g = 0, .b = 0, .ansi = BG_RED }, // Red
+    .{ .r = 0, .g = 128, .b = 0, .ansi = BG_GREEN }, // Green
+    .{ .r = 128, .g = 128, .b = 0, .ansi = BG_YELLOW }, // Yellow
+    .{ .r = 0, .g = 0, .b = 128, .ansi = BG_BLUE }, // Blue
     .{ .r = 128, .g = 0, .b = 128, .ansi = BG_MAGENTA }, // Magenta
-    .{ .r = 0, .g = 128, .b = 128, .ansi = BG_CYAN },    // Cyan
+    .{ .r = 0, .g = 128, .b = 128, .ansi = BG_CYAN }, // Cyan
     .{ .r = 192, .g = 192, .b = 192, .ansi = BG_WHITE }, // White
 };
 
@@ -56,13 +56,60 @@ pub fn getClosestAnsiBackground(color: Color) []const u8 {
     return closest_ansi;
 }
 
-// Example usage
-pub fn main() void {
-    const red_color = Color{ .r = 255, .g = 0, .b = 0 };
-    const bg_code = getClosestAnsiBackground(red_color);
-    std.debug.print("Background code: {s}\n", .{bg_code});
-
-    const dark_blue = Color{ .r = 0, .g = 0, .b = 100 };
-    const bg_code2 = getClosestAnsiBackground(dark_blue);
-    std.debug.print("Background code: {s}\n", .{bg_code2});
+/// Returns a true color (24-bit) background color escape sequence
+/// Format: \x1b[48;2;R;G;Bm where R, G, B are the color values (0-255)
+pub fn getTrueColorBackground(allocator: std.mem.Allocator, color: Color) ![]const u8 {
+    return try std.fmt.allocPrint(allocator, "\x1b[48;2;{d};{d};{d}m", .{ color.r, color.g, color.b });
 }
+
+/// Returns a true color (24-bit) foreground color escape sequence
+/// Format: \x1b[38;2;R;G;Bm where R, G, B are the color values (0-255)
+pub fn getTrueColorForeground(allocator: std.mem.Allocator, color: Color) ![]const u8 {
+    return try std.fmt.allocPrint(allocator, "\x1b[38;2;{d};{d};{d}m", .{ color.r, color.g, color.b });
+}
+
+test "getClosestAnsiBackground" {
+    const testing = std.testing;
+
+    // Test with red color
+    const red_color = Color{ .r = 255, .g = 0, .b = 0 };
+    const red_bg_code = getClosestAnsiBackground(red_color);
+    try testing.expectEqualStrings(BG_RED, red_bg_code);
+
+    // Test with dark blue color
+    const dark_blue = Color{ .r = 0, .g = 0, .b = 100 };
+    const blue_bg_code = getClosestAnsiBackground(dark_blue);
+    try testing.expectEqualStrings(BG_BLUE, blue_bg_code);
+
+    // Test with black color
+    const black = Color{ .r = 0, .g = 0, .b = 0 };
+    const black_bg_code = getClosestAnsiBackground(black);
+    try testing.expectEqualStrings(BG_BLACK, black_bg_code);
+
+    // Test with white color
+    const white = Color{ .r = 255, .g = 255, .b = 255 };
+    const white_bg_code = getClosestAnsiBackground(white);
+    try testing.expectEqualStrings(BG_WHITE, white_bg_code);
+}
+
+test "getTrueColorEscapeCodes" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test background color
+    {
+        const color = Color{ .r = 123, .g = 45, .b = 67 };
+        const bg_code = try getTrueColorBackground(allocator, color);
+        defer allocator.free(bg_code);
+        try testing.expectEqualStrings("\\x1b[48;2;123;45;67m", bg_code);
+    }
+
+    // Test foreground color
+    {
+        const color = Color{ .r = 210, .g = 180, .b = 140 };
+        const fg_code = try getTrueColorForeground(allocator, color);
+        defer allocator.free(fg_code);
+        try testing.expectEqualStrings("\\x1b[38;2;210;180;140m", fg_code);
+    }
+}
+

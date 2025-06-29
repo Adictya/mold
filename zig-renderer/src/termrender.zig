@@ -1,7 +1,10 @@
+const unicode = @import("std").unicode;
 const std = @import("std");
 const cl = @import("zclay");
+const uni = @import("uni.zig");
 const colorUtil = @import("color.zig");
 const print = std.debug.print;
+const Allocator = std.mem.Allocator;
 
 // Assuming these types are defined elsewhere in your Zig codebase
 // You'll need to import or define these types appropriately
@@ -99,6 +102,118 @@ const Clay_BorderRenderData = struct {
     color: Color,
 };
 
+pub const BorderCharacters = struct {
+    // Using u21 to support Unicode box drawing characters
+    top: u21 = '─',
+    bottom: u21 = '─',
+    left: u21 = '│',
+    right: u21 = '│',
+    top_left: u21 = '┌',
+    top_right: u21 = '┐',
+    bottom_left: u21 = '└',
+    bottom_right: u21 = '┘',
+};
+
+/// A cell in the terminal buffer
+const BufferCell = struct {
+    char: u21 = ' ',
+    bg_color: []const u8 = "",
+    fg_color: []const u8 = "",
+    modified: bool = false,
+};
+
+/// A 2D buffer for terminal rendering
+pub const TermBuffer = struct {
+    width: usize,
+    height: usize,
+    buffer: [][]BufferCell,
+    allocator: Allocator,
+
+    /// Initialize a new terminal buffer with the given dimensions
+    pub fn init(allocator: Allocator, width: usize, height: usize) !*TermBuffer {
+        var self = try allocator.create(TermBuffer);
+        self.* = TermBuffer{
+            .width = width,
+            .height = height,
+            .buffer = undefined,
+            .allocator = allocator,
+        };
+
+        // Allocate the 2D buffer
+        self.buffer = try allocator.alloc([]BufferCell, height);
+        for (0..height) |y| {
+            self.buffer[y] = try allocator.alloc(BufferCell, width);
+            for (0..width) |x| {
+                self.buffer[y][x] = BufferCell{};
+            }
+        }
+
+        return self;
+    }
+
+    /// Free the buffer memory
+    pub fn deinit(self: *TermBuffer) void {
+        for (0..self.height) |y| {
+            self.allocator.free(self.buffer[y]);
+        }
+        self.allocator.free(self.buffer);
+        self.allocator.destroy(self);
+    }
+
+    /// Clear the buffer
+    pub fn clear(self: *TermBuffer) void {
+        for (0..self.height) |y| {
+            for (0..self.width) |x| {
+                self.buffer[y][x] = BufferCell{};
+            }
+        }
+    }
+
+    /// Set a character at the given position
+    pub fn setChar(self: *TermBuffer, x: usize, y: usize, char: u21) void {
+        if (x >= self.width or y >= self.height) return;
+        self.buffer[y][x].char = char;
+        self.buffer[y][x].modified = true;
+    }
+
+    /// Set background color at the given position
+    pub fn setBgColor(self: *TermBuffer, x: usize, y: usize, color: []const u8) void {
+        if (x >= self.width or y >= self.height) return;
+        self.buffer[y][x].bg_color = color;
+        self.buffer[y][x].modified = true;
+    }
+
+    /// Set foreground color at the given position
+    pub fn setFgColor(self: *TermBuffer, x: usize, y: usize, color: []const u8) void {
+        if (x >= self.width or y >= self.height) return;
+        self.buffer[y][x].fg_color = color;
+        self.buffer[y][x].modified = true;
+    }
+
+    /// Flush the buffer to stdout
+    pub fn flush(self: *TermBuffer) !void {
+        var unicodeBuffer: [4]u8 = undefined;
+        print("\x1b[H\x1b[J", .{}); // Clear screen
+
+        for (0..self.height) |y| {
+            for (0..self.width) |x| {
+                const cell = self.buffer[y][x];
+                if (cell.modified) {
+                    print("\x1b[{d};{d}H", .{ y + 1, x + 1 }); // Move cursor
+                    if (cell.bg_color.len > 0) {
+                        print("{s}", .{cell.bg_color});
+                    }
+                    if (cell.fg_color.len > 0) {
+                        print("{s}", .{cell.fg_color});
+                    }
+                    const uniChar = try uni.codepointToUtf8Bytes(cell.char, &unicodeBuffer);
+                    print("{s}{s}", .{ uniChar, RESET });
+                }
+            }
+        }
+    }
+};
+
 pub fn clayColorToTerminallibColor(color: cl.Color) Color {
     return Color{
         .r = color[0],
@@ -113,6 +228,9 @@ const CLAY_OVERFLOW_TRAP = false; // Set to true if you want overflow trapping
 inline fn consoleMovesCursor(x: i32, y: i32) void {
     print("\x1b[{d};{d}H", .{ y + 1, x + 1 });
 }
+
+/// Global terminal buffer
+var term_buffer: ?*TermBuffer = null;
 
 pub fn clayPointIsInsideRect(point: cl.Vector2, rect: cl.BoundingBox) bool {
     // TODO this function is a copy of Clay__PointIsInsideRect but that one is internal, I don't know if we want
@@ -132,8 +250,14 @@ inline fn consoleDrawRectangle(
     scissorBox: cl.BoundingBox,
 ) void {
     const color = clayColorToTerminallibColor(clay_color);
-    // const termColor = colorUtil.getClosestAnsiBackgroundColor(colorUtil.Rgb{ .r = color.r, .g = color.g, .b = color.b });
-    const termColor = colorUtil.getClosestAnsiBackground(colorUtil.Color{ .r = 0, .g = 0, .b = 0 });
+    const termColor = colorUtil.getTrueColorBackground(std.heap.page_allocator, colorUtil.Color{
+        .r = @intFromFloat(color.r),
+        .g = @intFromFloat(color.g),
+        .b = @intFromFloat(color.b),
+    }) catch {
+        std.debug.panic("Failed to get true color background", .{});
+    };
+    // const termColor = colorUtil.getClosestAnsiBackground(colorUtil.Color{ .r = 0, .g = 0, .b = 0 });
     // const termColor = " ";
     // const average = (color.r + color.g + color.b + color.a) / 4.0 / 255.0;
     const average = color.a / 255.0;
@@ -162,8 +286,20 @@ inline fn consoleDrawRectangle(
                 continue;
             }
 
-            consoleMovesCursor(x, y);
-            print("{s} {s}", .{ termColor, RESET });
+            // Write to buffer instead of stdout
+            if (term_buffer) |buffer| {
+                const ux: usize = @intCast(x);
+                const uy: usize = @intCast(y);
+                if (ux < buffer.width and uy < buffer.height) {
+                    buffer.setBgColor(ux, uy, termColor);
+                    buffer.setChar(ux, uy, ' ');
+                }
+            } else {
+                // Fallback to direct output if buffer not initialized
+                consoleMovesCursor(x, y);
+                print("{s} {s}", .{ termColor, RESET });
+            }
+
             if (average > 0.75) {
                 // const char = "█";
                 // print("{s}{s}{s}", .{ termColor, char, RESET });
@@ -217,6 +353,120 @@ pub fn consoleMeasureText(
     return textSize;
 }
 
+/// Renders a border with custom characters
+fn consoleRenderBorder(
+    bounding_box: cl.BoundingBox,
+    border_chars: BorderCharacters,
+    color: cl.Color,
+) void {
+    const fg_color = colorUtil.getTrueColorForeground(std.heap.page_allocator, colorUtil.Color{
+        .r = @intFromFloat(color[0]),
+        .g = @intFromFloat(color[1]),
+        .b = @intFromFloat(color[2]),
+    }) catch {
+        std.debug.panic("Failed to get true color foreground", .{});
+    };
+
+    const x0: usize = @intFromFloat(bounding_box.x);
+    const y0: usize = @intFromFloat(bounding_box.y);
+    const width: usize = @intFromFloat(bounding_box.width);
+    const height: usize = @intFromFloat(bounding_box.height);
+
+    // Draw corners
+    if (term_buffer) |buffer| {
+        // Top-left corner
+        const tlx: usize = @intCast(x0);
+        const tly: usize = @intCast(y0);
+        if (tlx < buffer.width and tly < buffer.height) {
+            buffer.setFgColor(tlx, tly, fg_color);
+            buffer.setFgColor(tlx, tly, fg_color);
+            if (width > 1 and height > 1) {
+                buffer.setChar(tlx, tly, border_chars.top_left);
+            } else if (width > 1) {
+                buffer.setChar(tlx, tly, border_chars.bottom);
+            } else {
+                buffer.setChar(tlx, tly, border_chars.top);
+            }
+        }
+
+        // Top-right corner
+        const trx: usize = @intCast(x0 + width - 1);
+        const tr_y: usize = @intCast(y0);
+        if (trx < buffer.width and tr_y < buffer.height) {
+            buffer.setFgColor(trx, tr_y, fg_color);
+            if (width > 1 and height > 1) {
+                buffer.setChar(trx, tr_y, border_chars.top_right);
+            } else if (width > 1) {
+                buffer.setChar(trx, tr_y, border_chars.bottom);
+            } else {
+                buffer.setChar(trx, tr_y, border_chars.top);
+            }
+        }
+
+        if (width > 1 and height > 1) {
+            // Bottom-left corner
+            const blx: usize = @intCast(x0);
+            const bly: usize = @intCast(y0 + height - 1);
+            if (blx < buffer.width and bly < buffer.height) {
+                buffer.setFgColor(blx, bly, fg_color);
+                buffer.setChar(blx, bly, border_chars.bottom_left);
+            }
+
+            // Bottom-right corner
+            const brx: usize = @intCast(x0 + width - 1);
+            const bry: usize = @intCast(y0 + height - 1);
+            if (brx < buffer.width and bry < buffer.height) {
+                buffer.setFgColor(brx, bry, fg_color);
+                buffer.setChar(brx, bry, border_chars.bottom_right);
+            }
+        }
+
+        if (width > 1) {
+            // Draw top edge
+            for (1..width - 1) |i| {
+                const tx: usize = @intCast(x0 + i);
+                const ty: usize = @intCast(y0);
+                if (tx < buffer.width and ty < buffer.height) {
+                    buffer.setFgColor(tx, ty, fg_color);
+                    buffer.setChar(tx, ty, border_chars.top);
+                }
+            }
+
+            // Draw bottom edge
+            for (1..width - 1) |i| {
+                const bx: usize = @intCast(x0 + i);
+                const by: usize = @intCast(y0 + height - 1);
+                if (bx < buffer.width and by < buffer.height) {
+                    buffer.setFgColor(bx, by, fg_color);
+                    buffer.setChar(bx, by, border_chars.bottom);
+                }
+            }
+        }
+
+        // Draw left edge
+        if (height > 1) {
+            for (1..height - 1) |i| {
+                const lx: usize = @intCast(x0);
+                const ly: usize = @intCast(y0 + i);
+                if (lx < buffer.width and ly < buffer.height) {
+                    buffer.setFgColor(lx, ly, fg_color);
+                    buffer.setChar(lx, ly, border_chars.left);
+                }
+            }
+
+            // Draw right edge
+            for (1..height - 1) |i| {
+                const rx: usize = @intCast(x0 + width - 1);
+                const ry: usize = @intCast(y0 + i);
+                if (rx < buffer.width and ry < buffer.height) {
+                    buffer.setFgColor(rx, ry, fg_color);
+                    buffer.setChar(rx, ry, border_chars.right);
+                }
+            }
+        }
+    }
+}
+
 /// Renders text to the terminal
 fn consoleDrawText(
     bounding_box: cl.BoundingBox,
@@ -224,6 +474,14 @@ fn consoleDrawText(
     scissor_box: cl.BoundingBox,
 ) void {
     const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
+    const color = clayColorToTerminallibColor(config.text_color);
+    const termColor = colorUtil.getTrueColorForeground(std.heap.page_allocator, colorUtil.Color{
+        .r = @intFromFloat(color.r),
+        .g = @intFromFloat(color.g),
+        .b = @intFromFloat(color.b),
+    }) catch {
+        std.debug.panic("Failed to get true color background", .{});
+    };
     var y: i32 = 0;
     var lineX: i32 = 0;
 
@@ -262,8 +520,20 @@ fn consoleDrawText(
         if (debug) {
             continue;
         }
-        consoleMovesCursor(cursorX, 0);
-        print("{c}", .{text[x]});
+
+        // Write to buffer instead of stdout
+        if (term_buffer) |buffer| {
+            const ux: usize = @intCast(cursorX);
+            const uy: usize = @intCast(cursorY);
+            if (ux < buffer.width and uy < buffer.height) {
+                buffer.setFgColor(ux, uy, termColor);
+                buffer.setChar(ux, uy, text[x]);
+            }
+        } else {
+            // Fallback to direct output if buffer not initialized
+            consoleMovesCursor(cursorX, cursorY);
+            print("{c}", .{text[x]});
+        }
     }
 }
 
@@ -274,8 +544,22 @@ pub fn clayTerminalRender(
     // _: i32,
     // _: i32,
 ) !void {
-    print("\x1b[H\x1b[J", .{}); // Clear
-    // print("start", .{}); // Clear
+    // Initialize the buffer if it doesn't exist or if dimensions have changed
+    if (term_buffer) |buffer| {
+        if (buffer.width != @as(usize, @intCast(width)) or buffer.height != @as(usize, @intCast(height))) {
+            buffer.deinit();
+            term_buffer = null;
+        }
+    }
+
+    if (term_buffer == null) {
+        term_buffer = try TermBuffer.init(std.heap.page_allocator, @intCast(width), @intCast(height));
+    }
+
+    // Clear the buffer
+    if (term_buffer) |buffer| {
+        buffer.clear();
+    }
 
     const fullWindow = cl.BoundingBox{
         .x = 0,
@@ -286,58 +570,10 @@ pub fn clayTerminalRender(
 
     var scissor_box = fullWindow;
 
-    // print("Rendering {s} commands\n", .{scissor_box});
-
+    // Render all commands to the buffer
     for (0..renderCommands.len) |j| {
         const render_command = renderCommands[j];
         const bounding_box = render_command.bounding_box;
-
-        // switch (render_command.command_type) {
-        //     .text => {
-        //         print("Rendering text {d} {d} {d} {d}\n", .{
-        //             @as(i32, @intFromFloat(bounding_box.x)),
-        //             @as(i32, @intFromFloat(bounding_box.y)),
-        //             @as(i32, @intFromFloat(bounding_box.width)),
-        //             @as(i32, @intFromFloat(bounding_box.height)),
-        //         });
-        //     },
-        //     .scissor_start => {
-        //         print("Scissor start\n", .{});
-        //     },
-        //     .scissor_end => {
-        //         print("Scissor end\n", .{});
-        //     },
-        //     .rectangle => {
-        //         print("Rectangle {d} {d} {d} {d}\n", .{
-        //             @as(i32, @intFromFloat(bounding_box.x)),
-        //             @as(i32, @intFromFloat(bounding_box.y)),
-        //             @as(i32, @intFromFloat(bounding_box.width)),
-        //             @as(i32, @intFromFloat(bounding_box.height)),
-        //         });
-        //
-        //         const data = render_command.render_data.rectangle;
-        //         consoleDrawRectangle(
-        //             @intFromFloat(bounding_box.x),
-        //             @intFromFloat(bounding_box.y),
-        //             @intFromFloat(bounding_box.width),
-        //             @intFromFloat(bounding_box.height),
-        //             data.background_color,
-        //             scissor_box,
-        //         );
-        //     },
-        //     .border => {
-        //         print("Border\n", .{});
-        //     },
-        //     .image => {
-        //         print("Image\n", .{});
-        //     },
-        //     .none => {
-        //         print("None\n", .{});
-        //     },
-        //     .custom => {
-        //         print("Custom\n", .{});
-        //     },
-        // }
 
         switch (render_command.command_type) {
             .text => {
@@ -364,52 +600,67 @@ pub fn clayTerminalRender(
             .border => {
                 const data = render_command.render_data.border;
 
-                // Left border
-                if (data.width.left > 0) {
-                    consoleDrawRectangle(
-                        @intFromFloat(bounding_box.x),
-                        @intFromFloat(bounding_box.y + data.corner_radius.top_left),
-                        data.width.left,
-                        @intFromFloat(bounding_box.height - data.corner_radius.top_left - data.corner_radius.bottom_left),
-                        data.color,
-                        scissor_box,
-                    );
-                }
+                // Check if we have custom border characters in user_data
+                if (render_command.user_data != null) {
+                    // Extract border characters from user_data
+                    const border_chars_ptr: *BorderCharacters = @ptrCast(@alignCast(render_command.user_data));
 
-                // Right border
-                if (data.width.right > 0) {
-                    consoleDrawRectangle(
-                        @as(i32, @intFromFloat(bounding_box.x + bounding_box.width)) - data.width.right,
-                        @intFromFloat(bounding_box.y + data.corner_radius.top_right),
-                        data.width.right,
-                        @intFromFloat(bounding_box.height - data.corner_radius.top_right - data.corner_radius.bottom_right),
+                    // Use the custom border rendering function
+                    consoleRenderBorder(
+                        bounding_box,
+                        border_chars_ptr.*,
                         data.color,
-                        scissor_box,
                     );
-                }
+                } else {
+                    // Fallback to the original rectangle-based border rendering
 
-                // Top border
-                if (data.width.top > 0) {
-                    consoleDrawRectangle(
-                        @intFromFloat(bounding_box.x + data.corner_radius.top_left),
-                        @intFromFloat(bounding_box.y),
-                        @intFromFloat(bounding_box.width - data.corner_radius.top_left - data.corner_radius.top_right),
-                        data.width.top,
-                        data.color,
-                        scissor_box,
-                    );
-                }
+                    // Left border
+                    if (data.width.left > 0) {
+                        consoleDrawRectangle(
+                            @intFromFloat(bounding_box.x),
+                            @intFromFloat(bounding_box.y + data.corner_radius.top_left),
+                            data.width.left,
+                            @intFromFloat(bounding_box.height - data.corner_radius.top_left - data.corner_radius.bottom_left),
+                            data.color,
+                            scissor_box,
+                        );
+                    }
 
-                // Bottom border
-                if (data.width.bottom > 0) {
-                    consoleDrawRectangle(
-                        @intFromFloat(bounding_box.x + data.corner_radius.bottom_left),
-                        @as(i32, @intFromFloat(bounding_box.y + bounding_box.height)) - data.width.bottom,
-                        @intFromFloat(bounding_box.width - data.corner_radius.bottom_left - data.corner_radius.bottom_right),
-                        data.width.bottom,
-                        data.color,
-                        scissor_box,
-                    );
+                    // Right border
+                    if (data.width.right > 0) {
+                        consoleDrawRectangle(
+                            @as(i32, @intFromFloat(bounding_box.x + bounding_box.width)) - data.width.right,
+                            @intFromFloat(bounding_box.y + data.corner_radius.top_right),
+                            data.width.right,
+                            @intFromFloat(bounding_box.height - data.corner_radius.top_right - data.corner_radius.bottom_right),
+                            data.color,
+                            scissor_box,
+                        );
+                    }
+
+                    // Top border
+                    if (data.width.top > 0) {
+                        consoleDrawRectangle(
+                            @intFromFloat(bounding_box.x + data.corner_radius.top_left),
+                            @intFromFloat(bounding_box.y),
+                            @intFromFloat(bounding_box.width - data.corner_radius.top_left - data.corner_radius.top_right),
+                            data.width.top,
+                            data.color,
+                            scissor_box,
+                        );
+                    }
+
+                    // Bottom border
+                    if (data.width.bottom > 0) {
+                        consoleDrawRectangle(
+                            @intFromFloat(bounding_box.x + data.corner_radius.bottom_left),
+                            @as(i32, @intFromFloat(bounding_box.y + bounding_box.height)) - data.width.bottom,
+                            @intFromFloat(bounding_box.width - data.corner_radius.bottom_left - data.corner_radius.bottom_right),
+                            data.width.bottom,
+                            data.color,
+                            scissor_box,
+                        );
+                    }
                 }
             },
             .image => {},
@@ -418,5 +669,19 @@ pub fn clayTerminalRender(
         }
     }
 
-    // consoleMovesCursor(-1, -1); // TODO make the user not be able to write
+    // Flush the buffer to stdout
+    if (term_buffer) |buffer| {
+        buffer.flush() catch {
+            unreachable; // Handle any errors in flushing the buffer
+
+        };
+    }
+}
+
+/// Cleanup function to free the terminal buffer
+pub fn clayTerminalCleanup() void {
+    if (term_buffer) |buffer| {
+        buffer.deinit();
+        term_buffer = null;
+    }
 }
