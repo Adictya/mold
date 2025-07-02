@@ -71,7 +71,12 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("zclay", zclay_dep.module("zclay"));
 
-    // This declares intent for the executable to be installed into the
+    const mibu_dep = b.dependency("mibu", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("mibu", mibu_dep.module("mibu"));
+
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
     b.installArtifact(exe);

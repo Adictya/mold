@@ -52,6 +52,7 @@ fn rgbToXyz(rgb: Color.RGB) XYZ {
     var g = @as(f32, @floatFromInt(rgb.g)) / 255.0;
     var b = @as(f32, @floatFromInt(rgb.b)) / 255.0;
 
+    @setEvalBranchQuota(10000);
     // Apply gamma correction (sRGB)
     r = if (r > 0.04045) math.pow(f32, (r + 0.055) / 1.055, 2.4) else r / 12.92;
     g = if (g > 0.04045) math.pow(f32, (g + 0.055) / 1.055, 2.4) else g / 12.92;
@@ -81,6 +82,8 @@ fn xyzToRgb(xyz: XYZ) Color.RGB {
     r /= 100.0;
     g /= 100.0;
     b /= 100.0;
+
+    @setEvalBranchQuota(10000);
 
     // Apply inverse gamma correction (sRGB)
     r = if (r > 0.0031308) 1.055 * math.pow(f32, r, 1.0 / 2.4) - 0.055 else 12.92 * r;
@@ -133,6 +136,7 @@ fn labToXyz(lab: Color.Lab) XYZ {
 
 /// Lab transformation function f(t)
 fn labF(t: f32) f32 {
+    @setEvalBranchQuota(10000);
     const delta: f32 = 6.0 / 29.0;
     const delta_cubed = delta * delta * delta;
 

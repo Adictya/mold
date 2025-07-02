@@ -151,5 +151,10 @@ pub fn init() !void {
     const arena: clay.Arena = clay.createArenaWithCapacityAndMemory(memory);
     _ = clay.initialize(arena, .{ .h = 100, .w = 100 }, .{});
     clay.setMeasureTextFunction(void, {}, renderer.consoleMeasureText);
-    renderer.clayTerminalRender(example.funLayout(), 96, 100) catch unreachable;
+
+    renderer.clayTerminalRender(
+        example.funLayout(),
+        96,
+        100,
+    ) catch unreachable;
 }

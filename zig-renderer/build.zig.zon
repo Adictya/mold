@@ -28,9 +28,13 @@
             .url = "git+https://github.com/johan0A/clay-zig-bindings?ref=v0.2.1+0.14#37110b6e0ed3de44fb7e9f9c2744a1837d8b84cc",
             .hash = "zclay-0.2.0-Ej1rkNXJAAAI8utSJxUNPY5EybD7bjgbcx7pPjN_atKC",
         },
-        .termsize = .{
-            .url = "git+https://github.com/softprops/zig-termsize?ref=v0.1.0#6dfcb96e1514ffed99620ab9b5e6a9e05ba83441",
-            .hash = "termsize-0.1.0-AAAAAPwoAADDf7A2UP2G3_GRNBFqK9fo4gcxGTqjDxF2",
+        .zerminal = .{
+            .url = "git+https://github.com/jhickner/zerminal#d86265ba964ae222ff211bcc1be5f6187be2e9cb",
+            .hash = "zerminal-0.0.0-AAAAAJPVAAC4B2Ic4qodpyYx_wMmawAxkg_aBdlKhXXB",
+        },
+        .mibu = .{
+            .url = "git+https://github.com/xyaman/mibu#12e50de03e927199ab0e6d680f0250245f923f52",
+            .hash = "mibu-0.0.1-AAAAACyjAADc_nfE0ISejvjWK6T2sLQK_6i7Tb6YN5iq",
         },
     },
     .paths = .{

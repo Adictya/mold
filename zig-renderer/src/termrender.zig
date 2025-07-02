@@ -2,6 +2,7 @@ const unicode = @import("std").unicode;
 const std = @import("std");
 const cl = @import("zclay");
 const uni = @import("uni.zig");
+const mibu = @import("mibu");
 const colorUtil = @import("color.zig");
 const print = std.debug.print;
 const Allocator = std.mem.Allocator;
@@ -228,6 +229,10 @@ const CLAY_OVERFLOW_TRAP = false; // Set to true if you want overflow trapping
 inline fn consoleMovesCursor(x: i32, y: i32) void {
     print("\x1b[{d};{d}H", .{ y + 1, x + 1 });
 }
+
+const writer = std.io.getStdOut().writer();
+const bufferred = std.io.bufferedWriter(writer);
+const zbufout = bufferred.writer();
 
 /// Global terminal buffer
 var term_buffer: ?*TermBuffer = null;
