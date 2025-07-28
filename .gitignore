@@ -34,3 +34,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 zig-renderer/.zig-cache
 zig-renderer/zig-out
+native/.zig-cache
+native/zig-out
+packages/zig-renderer/.zig-cache
+packages/zig-renderer/zig-out

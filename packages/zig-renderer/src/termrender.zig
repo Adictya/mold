@@ -195,11 +195,15 @@ pub const TermBuffer = struct {
     pub fn flush(self: *TermBuffer) !void {
         var unicodeBuffer: [4]u8 = undefined;
         print("\x1b[H\x1b[J", .{}); // Clear screen
+        const stdout_file = std.io.getStdOut();
+        var bufferred = std.io.bufferedWriter(stdout_file.writer());
+        const zbufout = bufferred.writer();
 
         for (0..self.height) |y| {
             for (0..self.width) |x| {
                 const cell = self.buffer[y][x];
                 if (cell.modified) {
+                    try mibu.cursor.goTo(zbufout, x, y);
                     print("\x1b[{d};{d}H", .{ y + 1, x + 1 }); // Move cursor
                     if (cell.bg_color.len > 0) {
                         print("{s}", .{cell.bg_color});
@@ -229,10 +233,6 @@ const CLAY_OVERFLOW_TRAP = false; // Set to true if you want overflow trapping
 inline fn consoleMovesCursor(x: i32, y: i32) void {
     print("\x1b[{d};{d}H", .{ y + 1, x + 1 });
 }
-
-const writer = std.io.getStdOut().writer();
-const bufferred = std.io.bufferedWriter(writer);
-const zbufout = bufferred.writer();
 
 /// Global terminal buffer
 var term_buffer: ?*TermBuffer = null;

@@ -1,0 +1,10 @@
+{
+  "name": "@mold/native",
+  "private": true,
+  "scripts": {
+    "build:dev": "zig build"
+  },
+  "files": [
+    "native/mold_native.node"
+  ]
+}
