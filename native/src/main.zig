@@ -1,5 +1,6 @@
 const std = @import("std");
 const bridge = @import("bridge.zig");
+const Component = @import("lib/components.zig");
 
 const log = std.log.scoped(.main);
 
@@ -22,9 +23,9 @@ pub fn logFn(
     } ++ "): ";
 
     const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
-    // log_file.writer().print(prefix ++ format ++ "\n", args) catch {};
+    log_file.writer().print(prefix ++ format ++ "\n", args) catch {};
 
-    std.debug.print(prefix ++ format ++ "\n", args);
+    // std.debug.print(prefix ++ format ++ "\n", args);
 }
 
 fn callback(event: bridge.AppEvent) void {
@@ -43,6 +44,67 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
     try bridge.tuiInit(gpa.allocator(), callback);
+
+    const parent = try Component.Create(
+        gpa.allocator(),
+        "parent",
+        .box,
+        0,
+        0,
+        20,
+        5,
+        .{ .rgb = .{ 255, 255, 0 } },
+        .{ .rgb = .{ 255, 255, 0 } },
+        .{ .glyphs = .single_rounded, .where = .all },
+        null,
+    );
+
+    const child1 = try Component.Create(
+        gpa.allocator(),
+        "child1",
+        .text,
+        0,
+        0,
+        16,
+        1,
+        .{ .rgb = .{ 255, 0, 0 } },
+        .{ .index = 0 },
+        .{ .where = .none },
+        "Hello from Zig!",
+    );
+
+    parent.child(&[_]Component{child1.*});
+
+    const test_components = [_]Component{parent.*};
+
+    // const test_components = [_]Component{
+    //     .{
+    //         .ctype = .box,
+    //         .x = 5,
+    //         .y = 5,
+    //         .width = 20,
+    //         .height = 5,
+    //         .fg_color = 2,
+    //         .bg_color = 0,
+    //         .border = true,
+    //         .text = null,
+    //         .children = null,
+    //     },
+    //     .{
+    //         .ctype = .text,
+    //         .x = 7,
+    //         .y = 7,
+    //         .width = 16,
+    //         .height = 1,
+    //         .fg_color = 3,
+    //         .bg_color = 0,
+    //         .border = false,
+    //         .text = "Hello from Zig!",
+    //         .children = null,
+    //     },
+    // };
+
+    try bridge.render(&test_components);
 
     while (bridge.g_state.running.load(.monotonic)) {
         std.time.sleep(1000 * std.time.ns_per_ms);

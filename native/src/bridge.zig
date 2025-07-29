@@ -1,12 +1,15 @@
+const cl = @import("zclay");
 const std = @import("std");
 const vaxis = @import("vaxis");
+const renderer = @import("lib/clay-renderer.zig");
+const Component = @import("lib/components.zig");
 
 const log = std.log.scoped(.bridge);
 
-pub const EventType = enum(u8) {
-    key_press,
-    winsize,
-    rerender,
+pub const EventType = union(enum) {
+    key_press: vaxis.Key,
+    winsize: vaxis.Winsize,
+    rerender: bool,
 };
 
 pub const KeyEvent = struct {
@@ -18,54 +21,18 @@ pub const AppEvent = union(enum) {
     key: KeyEvent,
 };
 
-const ComponentType = enum(u8) {
-    box,
-    text,
-};
-
-pub const Component = extern struct {
-    ctype: ComponentType,
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-    fg_color: u8,
-    bg_color: u8,
-    border: bool,
-    text: ?[*:0]const u8, // Null-terminated string for text content
-
-    pub fn fmt(
-        self: *const Component,
-        writer: anytype,
-    ) []const u8 {
-        try std.fmt.format(
-            writer,
-            "Component(ctype: {}, x: {}, y: {}, width: {}, height: {}, fg_color: {}, bg_color: {}, border: {}, text: {})",
-            .{
-                self.ctype,
-                self.x,
-                self.y,
-                self.width,
-                self.height,
-                self.fg_color,
-                self.bg_color,
-                self.border,
-                if (self.text) |t| t else "null",
-            },
-        );
-    }
-};
-
 pub var g_state: struct {
     // allocator: std.mem.Allocator,
     tty: ?*vaxis.Tty = null,
     vx: ?*vaxis.Vaxis = null,
-    event_loop: ?*vaxis.Loop(vaxis.Event) = null,
+    event_loop: ?*vaxis.Loop(EventType) = null,
     event_thread: ?std.Thread = null,
     event_callback: ?*const fn (AppEvent) void = null,
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     render_mutex: std.Thread.Mutex = .{},
     components: []const Component = &.{},
+    clay_arena: cl.Arena = undefined,
+    clay_memory: []u8 = undefined,
 } = .{};
 
 pub fn tuiInit(
@@ -81,9 +48,18 @@ pub fn tuiInit(
     g_state.vx = allocator.create(vaxis.Vaxis) catch return;
     g_state.vx.?.* = vaxis.init(allocator, .{}) catch return;
 
-    g_state.event_loop = allocator.create(vaxis.Loop(vaxis.Event)) catch return;
+    g_state.event_loop = allocator.create(vaxis.Loop(EventType)) catch return;
     g_state.event_loop.?.* = .{ .tty = g_state.tty.?, .vaxis = g_state.vx.? };
     g_state.event_loop.?.init() catch return;
+
+    renderer.componentMap = renderer.IdHashMap.init(allocator);
+
+    const min_memory_size: u32 = cl.minMemorySize();
+    g_state.clay_memory = try allocator.alloc(u8, min_memory_size);
+    g_state.clay_arena = cl.createArenaWithCapacityAndMemory(g_state.clay_memory);
+    _ = cl.initialize(g_state.clay_arena, .{ .h = 100, .w = 100 }, .{});
+    renderer.display_width = try vaxis.DisplayWidth.init(allocator);
+    cl.setMeasureTextFunction(void, {}, renderer.consoleMeasureText);
 
     // try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
 
@@ -94,6 +70,30 @@ pub fn tuiInit(
 
     g_state.event_loop.?.start() catch {};
     g_state.running.store(true, .monotonic);
+
+    while (true) {
+        const event = g_state.event_loop.?.nextEvent();
+
+        switch (event) {
+            .winsize => |ws| {
+                g_state.render_mutex.lock();
+                defer g_state.render_mutex.unlock();
+                g_state.vx.?.resize(
+                    allocator,
+                    g_state.tty.?.anyWriter(),
+                    ws,
+                ) catch |err| {
+                    log.err("Resize error: {}", .{err});
+                };
+                cl.setLayoutDimensions(.{
+                    .w = @floatFromInt(ws.cols),
+                    .h = @floatFromInt(ws.rows),
+                });
+                break;
+            },
+            else => {},
+        }
+    }
 
     g_state.event_thread = std.Thread.spawn(
         .{},
@@ -121,6 +121,70 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     }
 }
 
+pub fn renderDFS(
+    comps: []const Component,
+) !void {
+    for (comps, 0..) |comp, i| {
+        const compPtr = &comps[i];
+        const compId = cl.ElementId.ID(comp.id);
+        try renderer.componentMap.put(compId.id, comp);
+        log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.id });
+        switch (comp.ctype) {
+            .box => {
+                var padding: cl.Padding = .{ .bottom = 0, .left = 0, .right = 0, .top = 0 };
+                switch (comp.border.where) {
+                    .all => {
+                        padding.bottom = 1;
+                        padding.left = 1;
+                        padding.right = 1;
+                        padding.top = 1;
+                    },
+                    .bottom => {
+                        padding.bottom = 1;
+                    },
+                    .left => {
+                        padding.left = 1;
+                    },
+                    .right => {
+                        padding.right = 1;
+                    },
+                    .top => {
+                        padding.top = 1;
+                    },
+                    .other => |loc| {
+                        if (loc.bottom) padding.bottom = 1;
+                        if (loc.left) padding.left = 1;
+                        if (loc.right) padding.right = 1;
+                        if (loc.top) padding.top = 1;
+                    },
+                    else => {},
+                }
+                cl.UI()(.{
+                    .id = compId,
+                    .layout = .{
+                        .sizing = .{
+                            .w = .fixed(@floatFromInt(comp.height)),
+                            .h = .fixed(@floatFromInt(comp.width)),
+                        },
+                        .padding = padding,
+                    },
+                    .background_color = cl.Color{ 255, 255, 255, 100 },
+                    .user_data = @ptrCast(@constCast(compPtr)),
+                })({
+                    if (comp.children) |children| {
+                        try renderDFS(children);
+                    }
+                });
+            },
+            .text => {
+                if (comp.text) |text| {
+                    cl.text(text, .{ .user_data = @constCast(compPtr) });
+                }
+            },
+        }
+    }
+}
+
 fn tuiEventLoop(allocator: std.mem.Allocator) void {
     const loop = g_state.event_loop.?;
     const callback = g_state.event_callback.?;
@@ -131,10 +195,12 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
         switch (event) {
             .key_press => |key| {
                 if (key.text) |key_text| {
-                    const key_event = AppEvent{ .key = .{
-                        .text = allocator.dupe(u8, key_text) catch @panic("Out of memory"),
-                        .mods = key.mods,
-                    } };
+                    const key_event = AppEvent{
+                        .key = .{
+                            .text = allocator.dupe(u8, key_text) catch @panic("Out of memory"),
+                            .mods = key.mods,
+                        },
+                    };
                     defer allocator.free(key_event.key.text);
                     callback(key_event);
                 }
@@ -158,20 +224,34 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
             else => {},
         }
 
-        const win = g_state.vx.?.window();
+        const window = g_state.vx.?.window();
 
         g_state.render_mutex.lock();
         defer g_state.render_mutex.unlock();
+        window.clear();
 
-        win.clear();
+        cl.beginLayout();
+        renderDFS(g_state.components) catch {};
+        const commands = cl.endLayout();
 
-        for (g_state.components) |comp| {
-            // TODO(adictya): use dfs instead of loop
-            log.debug("Rendering {} component", .{comp});
-        }
+        renderer.clayTerminalRender(
+            @constCast(&window),
+            commands,
+            @intCast(window.width),
+            @intCast(window.height),
+        ) catch |err| {
+            log.err("Render error: {}", .{err});
+        };
 
         g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
             log.err("Render error: {}", .{err});
         };
     }
+}
+
+pub fn render(components: []const Component) !void {
+    g_state.render_mutex.lock();
+    defer g_state.render_mutex.unlock();
+    g_state.components = components;
+    g_state.event_loop.?.postEvent(.{ .rerender = true });
 }
