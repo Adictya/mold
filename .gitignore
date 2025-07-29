@@ -38,3 +38,4 @@ native/.zig-cache
 native/zig-out
 packages/zig-renderer/.zig-cache
 packages/zig-renderer/zig-out
+packages/core/native/mold_native.node

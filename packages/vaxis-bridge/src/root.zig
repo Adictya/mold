@@ -10,7 +10,7 @@ var v_tsfn: ?napigen.napi_value = null;
 var jsCtx: ?napigen.JsContext = null;
 
 // Callback function that will be passed to shared.zig
-fn eventCallback(event: shared.AppEvent) void {
+fn eventCallback2(event: shared.AppEvent) void {
     std.debug.print("Event callback called with event: {}\n", .{event.etype});
     if (g_tsfn) |tsf| {
         _ = napigen.napi_call_threadsafe_function(
@@ -96,7 +96,7 @@ fn tuiInitWithCallback(js: *napigen.JsContext, callback: napigen.napi_value) !vo
     g_tsfn = tsfn;
     std.debug.print("TSFN created successfully\n", .{});
     // Initialize the TUI with our callback
-    try shared.tuiInit(eventCallback);
+    try shared.tuiInit(eventCallback2);
 }
 
 // Node.js wrapper for tuiShutdown that cleans up TSFN
