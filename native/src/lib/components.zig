@@ -1,5 +1,6 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
+const cl = @import("zclay");
 
 const Component = @This();
 
@@ -16,6 +17,7 @@ x: i32,
 y: i32,
 width: u32,
 height: u32,
+padding: cl.Padding = .{},
 fg_color: vaxis.Color,
 bg_color: vaxis.Color,
 border: BorderOptions,
@@ -72,6 +74,7 @@ pub fn Create(
     y: i32,
     width: u32,
     height: u32,
+    padding: cl.Padding,
     fg_color: vaxis.Color,
     bg_color: vaxis.Color,
     border: BorderOptions,
@@ -85,6 +88,7 @@ pub fn Create(
         .y = y,
         .width = width,
         .height = height,
+        .padding = padding,
         .fg_color = fg_color,
         .bg_color = bg_color,
         .border = border,

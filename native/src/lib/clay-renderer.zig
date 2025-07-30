@@ -70,26 +70,61 @@ fn consoleDrawText(
 ) void {
     const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
 
-    for (text, 0..) |_, x| {
-        if (bounding_box.x + @as(u16, @intCast(x)) > scissor_box.x + scissor_box.width) {
+    var col = bounding_box.x;
+
+    var iter = win.screen.unicode.graphemeIterator(text);
+    while (iter.next()) |grapheme| {
+        if (bounding_box.x + @as(u16, @intCast(col)) > scissor_box.x + scissor_box.width) {
             break;
         }
+        const s = grapheme.bytes(text);
+        const w = win.gwidth(s);
+        if (w == 0) continue;
 
-        std.log.debug("Drawing character at position {d}, {d}, {s}", .{
-            bounding_box.x + @as(u16, @intCast(x)),
+        const current_cell_opt = win.readCell(
+            bounding_box.x + @as(u16, @intCast(col)),
             bounding_box.y,
-            text[x .. x + 1],
-        });
-
-        win.writeCell(
-            bounding_box.x + @as(u16, @intCast(x)),
-            bounding_box.y,
-            .{
-                .char = .{ .grapheme = text[x .. x + 1] },
-                .style = .{ .fg = component.fg_color, .bg = component.bg_color },
-            },
         );
+
+        var style: Cell.Style = .{
+            .fg = component.fg_color,
+            .bg = component.bg_color,
+        };
+
+        if (current_cell_opt) |current_cell| {
+            style.fg = if (style.fg == .default) current_cell.style.fg else style.fg;
+            style.bg = if (style.bg == .default) current_cell.style.bg else style.bg;
+        }
+        win.writeCell(col, bounding_box.y, .{
+            .char = .{
+                .grapheme = s,
+                .width = @intCast(w),
+            },
+            .style = style,
+        });
+        col += w;
     }
+
+    // for (text, 0..) |_, x| {
+    //     if (bounding_box.x + @as(u16, @intCast(x)) > scissor_box.x + scissor_box.width) {
+    //         break;
+    //     }
+    //
+    //     std.log.debug("Drawing character at position {d}, {d}, {s}", .{
+    //         bounding_box.x + @as(u16, @intCast(x)),
+    //         bounding_box.y,
+    //         text[x .. x + 1],
+    //     });
+    //
+    //     win.writeCell(
+    //         bounding_box.x + @as(u16, @intCast(x)),
+    //         bounding_box.y,
+    //         .{
+    //             .char = .{ .grapheme = text[x .. x + 1] },
+    //             .style = style,
+    //         },
+    //     );
+    // }
 }
 
 fn consoleDrawRectangle(
@@ -149,6 +184,8 @@ fn consoleDrawRectangle(
             const on_border = is_top or is_bottom or is_left or is_right;
             if (on_border) {
                 style = opts.style;
+                if (style.fg == .default) style.fg = component.fg_color;
+                if (style.bg == .default) style.bg = component.bg_color;
 
                 // Handle corners first
                 if (is_top and is_left) {

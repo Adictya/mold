@@ -52,9 +52,10 @@ pub fn main() !void {
         0,
         0,
         20,
-        5,
-        .{ .rgb = .{ 255, 255, 0 } },
-        .{ .rgb = .{ 255, 255, 0 } },
+        25,
+        .{ .left = 1, .right = 1, .top = 1, .bottom = 1 },
+        .{ .rgb = .{ 0, 255, 0 } },
+        .{ .rgb = .{ 255, 0, 0 } },
         .{ .glyphs = .single_rounded, .where = .all },
         null,
     );
@@ -67,10 +68,11 @@ pub fn main() !void {
         0,
         16,
         1,
-        .{ .rgb = .{ 255, 0, 0 } },
-        .{ .index = 0 },
+        .{},
+        .default,
+        .default,
         .{ .where = .none },
-        "Hello from Zig!",
+        "Hello from Zig! 😎",
     );
 
     parent.child(&[_]Component{child1.*});

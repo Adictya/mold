@@ -131,31 +131,31 @@ pub fn renderDFS(
         log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.id });
         switch (comp.ctype) {
             .box => {
-                var padding: cl.Padding = .{ .bottom = 0, .left = 0, .right = 0, .top = 0 };
+                var padding = comp.padding;
                 switch (comp.border.where) {
                     .all => {
-                        padding.bottom = 1;
-                        padding.left = 1;
-                        padding.right = 1;
-                        padding.top = 1;
+                        padding.bottom += 1;
+                        padding.left += 1;
+                        padding.right += 1;
+                        padding.top += 1;
                     },
                     .bottom => {
-                        padding.bottom = 1;
+                        padding.bottom += 1;
                     },
                     .left => {
-                        padding.left = 1;
+                        padding.left += 1;
                     },
                     .right => {
-                        padding.right = 1;
+                        padding.right += 1;
                     },
                     .top => {
-                        padding.top = 1;
+                        padding.top += 1;
                     },
                     .other => |loc| {
-                        if (loc.bottom) padding.bottom = 1;
-                        if (loc.left) padding.left = 1;
-                        if (loc.right) padding.right = 1;
-                        if (loc.top) padding.top = 1;
+                        if (loc.bottom) padding.bottom += 1;
+                        if (loc.left) padding.left += 1;
+                        if (loc.right) padding.right += 1;
+                        if (loc.top) padding.top += 1;
                     },
                     else => {},
                 }
