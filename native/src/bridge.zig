@@ -2,6 +2,7 @@ const cl = @import("zclay");
 const std = @import("std");
 const vaxis = @import("vaxis");
 const renderer = @import("lib/clay-renderer.zig");
+const dom = @import("./lib/dom.zig");
 const Component = @import("lib/components.zig");
 
 const log = std.log.scoped(.bridge);
@@ -13,7 +14,8 @@ pub const EventType = union(enum) {
 };
 
 pub const KeyEvent = struct {
-    text: []const u8,
+    text: []const u8 = "",
+    key: u32,
     mods: vaxis.Key.Modifiers,
 };
 
@@ -27,7 +29,7 @@ pub var g_state: struct {
     vx: ?*vaxis.Vaxis = null,
     event_loop: ?*vaxis.Loop(EventType) = null,
     event_thread: ?std.Thread = null,
-    event_callback: ?*const fn (AppEvent) void = null,
+    event_callback: ?*const fn (*AppEvent) void = null,
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     render_mutex: std.Thread.Mutex = .{},
     components: []const Component = &.{},
@@ -37,7 +39,7 @@ pub var g_state: struct {
 
 pub fn tuiInit(
     allocator: std.mem.Allocator,
-    callback: *const fn (AppEvent) void,
+    callback: *const fn (*AppEvent) void,
 ) !void {
     g_state.event_callback = callback;
 
@@ -61,7 +63,7 @@ pub fn tuiInit(
     renderer.display_width = try vaxis.DisplayWidth.init(allocator);
     cl.setMeasureTextFunction(void, {}, renderer.consoleMeasureText);
 
-    // try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
+    try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
 
     try g_state.vx.?.queryTerminal(
         g_state.tty.?.anyWriter(),
@@ -106,7 +108,7 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     g_state.event_loop.?.stop();
     g_state.running.store(false, .monotonic);
 
-    // g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
+    g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
 
     g_state.vx.?.deinit(allocator, g_state.tty.?.anyWriter());
     g_state.tty.?.deinit();
@@ -122,66 +124,67 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
 }
 
 pub fn renderDFS(
-    comps: []const Component,
+    node: *dom.DomNode,
 ) !void {
-    for (comps, 0..) |comp, i| {
-        const compPtr = &comps[i];
-        const compId = cl.ElementId.ID(comp.id);
-        try renderer.componentMap.put(compId.id, comp);
-        log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.id });
-        switch (comp.ctype) {
-            .box => {
-                var padding = comp.padding;
-                switch (comp.border.where) {
-                    .all => {
-                        padding.bottom += 1;
-                        padding.left += 1;
-                        padding.right += 1;
-                        padding.top += 1;
+    const comp = node.component;
+    const compPtr = comp;
+    const compId = comp.id;
+    log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
+    switch (comp.ctype) {
+        .box => {
+            var padding = comp.padding;
+            switch (comp.border.where) {
+                .all => {
+                    padding.bottom += 1;
+                    padding.left += 1;
+                    padding.right += 1;
+                    padding.top += 1;
+                },
+                .bottom => {
+                    padding.bottom += 1;
+                },
+                .left => {
+                    padding.left += 1;
+                },
+                .right => {
+                    padding.right += 1;
+                },
+                .top => {
+                    padding.top += 1;
+                },
+                .other => |loc| {
+                    if (loc.bottom) padding.bottom += 1;
+                    if (loc.left) padding.left += 1;
+                    if (loc.right) padding.right += 1;
+                    if (loc.top) padding.top += 1;
+                },
+                else => {},
+            }
+            cl.UI()(.{
+                .id = compId,
+                .layout = .{
+                    .sizing = .{
+                        .w = .fixed(@floatFromInt(comp.height)),
+                        .h = .fixed(@floatFromInt(comp.width)),
                     },
-                    .bottom => {
-                        padding.bottom += 1;
-                    },
-                    .left => {
-                        padding.left += 1;
-                    },
-                    .right => {
-                        padding.right += 1;
-                    },
-                    .top => {
-                        padding.top += 1;
-                    },
-                    .other => |loc| {
-                        if (loc.bottom) padding.bottom += 1;
-                        if (loc.left) padding.left += 1;
-                        if (loc.right) padding.right += 1;
-                        if (loc.top) padding.top += 1;
-                    },
-                    else => {},
+                    .padding = padding,
+                },
+                .background_color = cl.Color{ 255, 255, 255, 100 },
+                .user_data = @ptrCast(@constCast(compPtr)),
+            })({
+                if (node.first_child) |children| {
+                    try renderDFS(children);
                 }
-                cl.UI()(.{
-                    .id = compId,
-                    .layout = .{
-                        .sizing = .{
-                            .w = .fixed(@floatFromInt(comp.height)),
-                            .h = .fixed(@floatFromInt(comp.width)),
-                        },
-                        .padding = padding,
-                    },
-                    .background_color = cl.Color{ 255, 255, 255, 100 },
-                    .user_data = @ptrCast(@constCast(compPtr)),
-                })({
-                    if (comp.children) |children| {
-                        try renderDFS(children);
-                    }
-                });
-            },
-            .text => {
-                if (comp.text) |text| {
-                    cl.text(text, .{ .user_data = @constCast(compPtr) });
+                if (node.next_sibling) |sibling| {
+                    try renderDFS(sibling);
                 }
-            },
-        }
+            });
+        },
+        .text => {
+            if (comp.text) |text| {
+                cl.text(text, .{ .user_data = @constCast(compPtr) });
+            }
+        },
     }
 }
 
@@ -194,16 +197,16 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
 
         switch (event) {
             .key_press => |key| {
+                var key_event = AppEvent{
+                    .key = .{
+                        .key = @intCast(key.codepoint),
+                        .mods = key.mods,
+                    },
+                };
                 if (key.text) |key_text| {
-                    const key_event = AppEvent{
-                        .key = .{
-                            .text = allocator.dupe(u8, key_text) catch @panic("Out of memory"),
-                            .mods = key.mods,
-                        },
-                    };
-                    defer allocator.free(key_event.key.text);
-                    callback(key_event);
+                    key_event.key.text = key_text;
                 }
+                callback(@constCast(&key_event));
 
                 if (key.matches('c', .{ .ctrl = true })) {
                     g_state.running.store(false, .monotonic);
@@ -224,28 +227,32 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
             else => {},
         }
 
-        const window = g_state.vx.?.window();
+        if (dom.root) |root| {
+            if (root.first_child) |first_child| {
+                const window = g_state.vx.?.window();
 
-        g_state.render_mutex.lock();
-        defer g_state.render_mutex.unlock();
-        window.clear();
+                g_state.render_mutex.lock();
+                defer g_state.render_mutex.unlock();
+                window.clear();
 
-        cl.beginLayout();
-        renderDFS(g_state.components) catch {};
-        const commands = cl.endLayout();
+                cl.beginLayout();
+                renderDFS(first_child) catch {};
+                const commands = cl.endLayout();
 
-        renderer.clayTerminalRender(
-            @constCast(&window),
-            commands,
-            @intCast(window.width),
-            @intCast(window.height),
-        ) catch |err| {
-            log.err("Render error: {}", .{err});
-        };
+                renderer.clayTerminalRender(
+                    @constCast(&window),
+                    commands,
+                    @intCast(window.width),
+                    @intCast(window.height),
+                ) catch |err| {
+                    log.err("Render error: {}", .{err});
+                };
 
-        g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
-            log.err("Render error: {}", .{err});
-        };
+                g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
+                    log.err("Render error: {}", .{err});
+                };
+            }
+        }
     }
 }
 
@@ -253,5 +260,9 @@ pub fn render(components: []const Component) !void {
     g_state.render_mutex.lock();
     defer g_state.render_mutex.unlock();
     g_state.components = components;
+    g_state.event_loop.?.postEvent(.{ .rerender = true });
+}
+
+pub fn rerender() !void {
     g_state.event_loop.?.postEvent(.{ .rerender = true });
 }

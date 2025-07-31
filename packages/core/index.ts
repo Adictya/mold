@@ -1,5 +1,4 @@
-const MoldCore = require('./native/mold_native.node');
+import MoldCore from './core';
 
-export default function hello() {
-  console.log(MoldCore.init(2));
-}
+export * from './solid';
+export default MoldCore;

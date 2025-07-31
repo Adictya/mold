@@ -12,7 +12,8 @@ pub const ComponentType = enum(u8) {
 };
 
 ctype: ComponentType,
-id: []const u8,
+id: cl.ElementId,
+string_id: []const u8,
 x: i32,
 y: i32,
 width: u32,
@@ -45,7 +46,7 @@ pub fn fmt(
     try writer.print(
         "<{s} ctype: {s}, x: {}, y: {}, width: {}, height: {}, fg_color: {}, bg_color: {}, border: {}, text: {s}>",
         .{
-            self.id,
+            self.string_id,
             @tagName(self.ctype), // More idiomatic for enums
             self.x,
             self.y,
@@ -64,39 +65,6 @@ pub fn fmt(
     //         try writer.print("\n\t</Component>", .{});
     //     }
     // }
-}
-
-pub fn Create(
-    allocator: std.mem.Allocator,
-    id: []const u8,
-    ctype: ComponentType,
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
-    padding: cl.Padding,
-    fg_color: vaxis.Color,
-    bg_color: vaxis.Color,
-    border: BorderOptions,
-    text: ?[]const u8,
-) !*Component {
-    const component = try allocator.create(Component);
-    component.* = Component{
-        .id = id,
-        .ctype = ctype,
-        .x = x,
-        .y = y,
-        .width = width,
-        .height = height,
-        .padding = padding,
-        .fg_color = fg_color,
-        .bg_color = bg_color,
-        .border = border,
-        .text = text,
-        .children = null,
-    };
-
-    return component;
 }
 
 pub fn child(

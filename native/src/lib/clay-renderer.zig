@@ -264,7 +264,7 @@ pub fn clayTerminalRender(
         const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
 
         // if (component) |comp| {
-        std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.id });
+        std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
         switch (render_command.command_type) {
             .text => {
                 const config = render_command.render_data.text;

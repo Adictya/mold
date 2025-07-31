@@ -1,0 +1,11 @@
+{
+  "presets": [
+    [
+      "babel-preset-solid",
+      {
+        "moduleName": "@mold/core",
+        "generate": "universal"
+      }
+    ]
+  ]
+}

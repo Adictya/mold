@@ -1,0 +1,26 @@
+{
+  "name": "solid-test",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "module": "index.tsx",
+  "scripts": {
+    "dev": "vite",
+    "build": "bun run build.ts",
+    "start": "bun run ./dist/index.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "solid-js": "^1.9.7",
+    "@mold/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.28.0",
+    "@babel/core": "^7.28.0",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "bun-plugin-solid": "^1.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "vite-plugin-solid": "^2.11.7"
+  }
+}
