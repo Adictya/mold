@@ -8,14 +8,19 @@ export const addListener = (listener: listener) => {
   listeners.push(listener);
 };
 
-const PROPERTIES = new Set([
-  "className",
-  "textContent",
-  "fgColor",
-  "bgColor",
-  "height",
-  "width",
-]);
+const PropertiesEnum = Object.freeze({
+  position: 0,
+  sizing: 1,
+  padding: 2,
+  childLayout: 3,
+  scroll: 4,
+  style: 5,
+  border: 6,
+  fgColor: 7,
+  bgColor: 8,
+  textStyle: 9,
+  text: 10,
+});
 
 // DomNode is now just a string ID that references a node in the Zig implementation
 type DomNode = { id: string };
@@ -31,6 +36,12 @@ function log(operation: string, ...args: any[]) {
 Core.init((...event) => {
   listeners.forEach((listener) => listener(event));
 });
+
+const idCounter = {
+  span: 0,
+  div: 0,
+  root: 0,
+};
 
 export const {
   render,
@@ -48,15 +59,26 @@ export const {
 } = createRenderer<DomNode>({
   createElement(tagName: string): DomNode {
     log("createElement", { tagName });
+
+    if (idCounter[tagName] === undefined) {
+      throw new Error(`Element not supportd: ${tagName}`);
+    }
+
+    log("1createElement", { tagName, id: idCounter[tagName] });
+
+    idCounter[tagName] += 1;
+
+    log("2createElement", { tagName, id: idCounter[tagName] });
     const elementId = Core.createElement({
-      element_id: tagName,
-      text: false,
+      element_id: `${tagName}-${idCounter[tagName]}`,
+      text: tagName === "span",
     });
     log("result of createElement", { elementId });
     return m(elementId)!;
   },
 
   createTextNode(value: string): DomNode {
+    throw new Error("Not implemented");
     log("createTextNode", { value });
     const elementId = Core.createElement({
       element_id: value,
@@ -67,6 +89,7 @@ export const {
   },
 
   replaceText(textNode: DomNode, value: string): void {
+    throw new Error("Not implemented");
     log("replaceText", {
       oldValue: textNode,
       newValue: value,
@@ -84,16 +107,30 @@ export const {
       value,
     });
 
-    if (PROPERTIES.has(name)) {
-      // Convert value to string for native bridge
-      const stringValue = String(value);
-      Core.setProperty({
-        element_id: um(node),
-        property: name,
-        value: stringValue,
-      });
+    if (name in PropertiesEnum) {
+      const property = PropertiesEnum[name];
+      var [simpleValue, complexValue] = [
+        "string",
+        "boolean",
+        "number",
+      ].includes(typeof value)
+        ? [value, undefined]
+        : ["", value];
+
+      if (name === "text" && complexValue) {
+        simpleValue = complexValue.join(" ");
+        complexValue = undefined;
+      }
+
+      Core.setProperty(
+        {
+          element_id: um(node),
+          property: property,
+        },
+        simpleValue,
+        complexValue,
+      );
     }
-    // Note: style and event handlers are not supported in this implementation
   },
 
   insertNode(parent: DomNode, node: DomNode, anchor?: DomNode | null): void {

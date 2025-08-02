@@ -3,6 +3,7 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const renderer = @import("lib/clay-renderer.zig");
 const dom = @import("./lib/dom.zig");
+const breakLongWords = @import("./lib/break-text.zig").breakLongWords;
 const Component = @import("lib/components.zig");
 
 const log = std.log.scoped(.bridge);
@@ -121,6 +122,8 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     if (g_state.event_thread) |thread| {
         thread.join();
     }
+
+    std.process.exit(0);
 }
 
 pub fn renderDFS(
@@ -132,58 +135,23 @@ pub fn renderDFS(
     log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
     switch (comp.ctype) {
         .box => {
-            var padding = comp.padding;
-            switch (comp.border.where) {
-                .all => {
-                    padding.bottom += 1;
-                    padding.left += 1;
-                    padding.right += 1;
-                    padding.top += 1;
-                },
-                .bottom => {
-                    padding.bottom += 1;
-                },
-                .left => {
-                    padding.left += 1;
-                },
-                .right => {
-                    padding.right += 1;
-                },
-                .top => {
-                    padding.top += 1;
-                },
-                .other => |loc| {
-                    if (loc.bottom) padding.bottom += 1;
-                    if (loc.left) padding.left += 1;
-                    if (loc.right) padding.right += 1;
-                    if (loc.top) padding.top += 1;
-                },
-                else => {},
-            }
-            cl.UI()(.{
-                .id = compId,
-                .layout = .{
-                    .sizing = .{
-                        .w = .fixed(@floatFromInt(comp.height)),
-                        .h = .fixed(@floatFromInt(comp.width)),
-                    },
-                    .padding = padding,
-                },
-                .background_color = cl.Color{ 255, 255, 255, 100 },
-                .user_data = @ptrCast(@constCast(compPtr)),
-            })({
+            var config = comp.view_props.toClay();
+            config.id = compId;
+            config.user_data = @constCast(compPtr);
+            cl.UI()(config)({
                 if (node.first_child) |children| {
                     try renderDFS(children);
                 }
-                if (node.next_sibling) |sibling| {
-                    try renderDFS(sibling);
-                }
             });
+            if (node.next_sibling) |sibling| {
+                try renderDFS(sibling);
+            }
         },
         .text => {
-            if (comp.text) |text| {
-                cl.text(text, .{ .user_data = @constCast(compPtr) });
-            }
+            var config = comp.text_props.toClay();
+            config.user_data = @constCast(compPtr);
+            log.debug("Rendering text: {s}", .{comp.text});
+            cl.text(comp.text, config);
         },
     }
 }
@@ -208,10 +176,10 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 }
                 callback(@constCast(&key_event));
 
-                if (key.matches('c', .{ .ctrl = true })) {
-                    g_state.running.store(false, .monotonic);
-                    break;
-                }
+                // if (key.matches('c', .{ .ctrl = true })) {
+                //     g_state.running.store(false, .monotonic);
+                //     break;
+                // }
             },
             .winsize => |ws| {
                 g_state.render_mutex.lock();
@@ -229,28 +197,47 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
 
         if (dom.root) |root| {
             if (root.first_child) |first_child| {
-                const window = g_state.vx.?.window();
+                var iter_depth: u8 = 0;
+                while (iter_depth < 2) {
+                    const window = g_state.vx.?.window();
 
-                g_state.render_mutex.lock();
-                defer g_state.render_mutex.unlock();
-                window.clear();
+                    g_state.render_mutex.lock();
+                    defer g_state.render_mutex.unlock();
 
-                cl.beginLayout();
-                renderDFS(first_child) catch {};
-                const commands = cl.endLayout();
+                    cl.beginLayout();
+                    renderDFS(first_child) catch {};
+                    const commands = cl.endLayout();
+                    const wrapNeeded = renderer.clayTerminalRenderValidate(
+                        allocator,
+                        @constCast(&window),
+                        commands,
+                    ) catch |err| {
+                        log.err("Render error: {}", .{err});
+                        iter_depth += 1;
+                        continue;
+                    };
+                    if (wrapNeeded) {
+                        log.debug("Wrapping needed, iter:{}", .{iter_depth});
+                        iter_depth += 1;
+                        continue;
+                    }
 
-                renderer.clayTerminalRender(
-                    @constCast(&window),
-                    commands,
-                    @intCast(window.width),
-                    @intCast(window.height),
-                ) catch |err| {
-                    log.err("Render error: {}", .{err});
-                };
+                    window.clear();
 
-                g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
-                    log.err("Render error: {}", .{err});
-                };
+                    renderer.clayTerminalRender(
+                        @constCast(&window),
+                        commands,
+                        @intCast(window.width),
+                        @intCast(window.height),
+                    ) catch |err| {
+                        log.err("Render error: {}", .{err});
+                    };
+
+                    g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
+                        log.err("Render error: {}", .{err});
+                    };
+                    break;
+                }
             }
         }
     }

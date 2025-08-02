@@ -3,6 +3,8 @@ const cl = @import("zclay");
 const vaxis = @import("vaxis");
 const Component = @import("components.zig");
 const bridge = @import("bridge");
+const dom = @import("dom.zig");
+const breakLongWords = @import("./break-text.zig").breakLongWords;
 
 const HashMap = std.HashMap;
 
@@ -41,11 +43,12 @@ const BoundingBox = struct {
 fn convBoundingBox(
     bounding_box: cl.BoundingBox,
 ) BoundingBox {
+    std.log.debug("Bounding box: {}", .{bounding_box.x});
     return BoundingBox{
-        .x = @as(u16, @intFromFloat(bounding_box.x)),
-        .y = @as(u16, @intFromFloat(bounding_box.y)),
-        .width = @as(u16, @intFromFloat(bounding_box.width)),
-        .height = @as(u16, @intFromFloat(bounding_box.height)),
+        .x = @as(u16, if (bounding_box.x < 0) 0 else @intFromFloat(bounding_box.x)),
+        .y = @as(u16, if (bounding_box.y < 0) 0 else @intFromFloat(bounding_box.y)),
+        .width = @as(u16, if (bounding_box.width < 0) 0 else @intFromFloat(bounding_box.width)),
+        .height = @as(u16, if (bounding_box.height < 0) 0 else @intFromFloat(bounding_box.height)),
     };
 }
 
@@ -73,6 +76,7 @@ fn consoleDrawText(
     var col = bounding_box.x;
 
     var iter = win.screen.unicode.graphemeIterator(text);
+
     while (iter.next()) |grapheme| {
         if (bounding_box.x + @as(u16, @intCast(col)) > scissor_box.x + scissor_box.width) {
             break;
@@ -81,20 +85,21 @@ fn consoleDrawText(
         const w = win.gwidth(s);
         if (w == 0) continue;
 
+        var style: Cell.Style = .{
+            .fg = component.text_props.fg_color.color,
+            .bg = component.text_props.bg_color.color,
+        };
+
         const current_cell_opt = win.readCell(
             bounding_box.x + @as(u16, @intCast(col)),
             bounding_box.y,
         );
 
-        var style: Cell.Style = .{
-            .fg = component.fg_color,
-            .bg = component.bg_color,
-        };
-
         if (current_cell_opt) |current_cell| {
-            style.fg = if (style.fg == .default) current_cell.style.fg else style.fg;
-            style.bg = if (style.bg == .default) current_cell.style.bg else style.bg;
+            style.fg = if (component.text_props.fg_color.unset) current_cell.style.fg else style.fg;
+            style.bg = if (component.text_props.bg_color.unset) current_cell.style.bg else style.bg;
         }
+
         win.writeCell(col, bounding_box.y, .{
             .char = .{
                 .grapheme = s,
@@ -140,6 +145,34 @@ fn consoleDrawRectangle(
     const left_start = bounding_box.x;
     const left_end = bounding_box.x + bounding_box.width;
 
+    const opts = component.view_props.border;
+
+    const glyphs = switch (opts.type) {
+        .single_rounded => Component.single_rounded,
+        .single_square => Component.single_rounded,
+    };
+
+    const top_left: Cell.Character = .{ .grapheme = glyphs[0], .width = 1 };
+    const horizontal: Cell.Character = .{ .grapheme = glyphs[1], .width = 1 };
+    const top_right: Cell.Character = .{ .grapheme = glyphs[2], .width = 1 };
+    const vertical: Cell.Character = .{ .grapheme = glyphs[3], .width = 1 };
+    const bottom_right: Cell.Character = .{ .grapheme = glyphs[4], .width = 1 };
+    const bottom_left: Cell.Character = .{ .grapheme = glyphs[5], .width = 1 };
+
+    const loc: Component.BorderOptions.Locations = .{
+        .bottom = opts.where.bottom,
+        .left = opts.where.left,
+        .right = opts.where.right,
+        .top = opts.where.top,
+    };
+
+    var grapheme: Cell.Character = .{ .grapheme = " ", .width = 1 };
+    const style: Cell.Style = .{
+        .fg = opts.color.color,
+        .bg = component.view_props.style.bg_color.color,
+    };
+    std.log.debug("Border style: {}", .{style});
+
     for (top_start..top_end) |y| {
         if (top_end > scissor_box.y + scissor_box.height) {
             break;
@@ -149,33 +182,6 @@ fn consoleDrawRectangle(
                 break;
             }
 
-            const opts = component.border;
-
-            const glyphs = Component.single_rounded;
-
-            const top_left: Cell.Character = .{ .grapheme = glyphs[0], .width = 1 };
-            const horizontal: Cell.Character = .{ .grapheme = glyphs[1], .width = 1 };
-            const top_right: Cell.Character = .{ .grapheme = glyphs[2], .width = 1 };
-            const vertical: Cell.Character = .{ .grapheme = glyphs[3], .width = 1 };
-            const bottom_right: Cell.Character = .{ .grapheme = glyphs[4], .width = 1 };
-            const bottom_left: Cell.Character = .{ .grapheme = glyphs[5], .width = 1 };
-
-            const loc: Component.BorderOptions.Locations = switch (opts.where) {
-                .none => .{},
-                .all => .{ .top = true, .bottom = true, .right = true, .left = true },
-                .bottom => .{ .bottom = true },
-                .right => .{ .right = true },
-                .left => .{ .left = true },
-                .top => .{ .top = true },
-                .other => |loc| loc,
-            };
-
-            var grapheme: Cell.Character = .{ .grapheme = " ", .width = 1 };
-            var style: Cell.Style = .{
-                .fg = component.fg_color,
-                .bg = component.bg_color,
-            };
-
             const is_top = y == top_start;
             const is_bottom = y == top_end - 1;
             const is_left = x == left_start;
@@ -183,10 +189,6 @@ fn consoleDrawRectangle(
 
             const on_border = is_top or is_bottom or is_left or is_right;
             if (on_border) {
-                style = opts.style;
-                if (style.fg == .default) style.fg = component.fg_color;
-                if (style.bg == .default) style.bg = component.bg_color;
-
                 // Handle corners first
                 if (is_top and is_left) {
                     grapheme = if (loc.top and loc.left) top_left else if (loc.top) horizontal else if (loc.left) vertical else grapheme;
@@ -217,11 +219,12 @@ fn consoleDrawRectangle(
                     .style = style,
                 },
             );
+
+            grapheme = .{ .grapheme = " ", .width = 1 };
         }
     }
 }
 
-pub var allocator: std.mem.Allocator = null;
 pub var display_width: vaxis.DisplayWidth = undefined;
 
 pub fn consoleMeasureText(
@@ -234,6 +237,60 @@ pub fn consoleMeasureText(
     const width = vaxis.gwidth.gwidth(text, .unicode, &display_width);
 
     return .{ .w = @floatFromInt(width), .h = 1 };
+}
+
+pub fn clayTerminalRenderValidate(
+    allocator: std.mem.Allocator,
+    win: *vaxis.Window,
+    renderCommands: []cl.RenderCommand,
+) !bool {
+    for (0..renderCommands.len) |j| {
+        const render_command = renderCommands[j];
+
+        switch (render_command.command_type) {
+            .rectangle => {
+                const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
+                comp.width = @intFromFloat(render_command.bounding_box.width);
+                comp.height = @intFromFloat(render_command.bounding_box.height);
+            },
+            .text => {
+                const config = render_command.render_data.text;
+                const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
+
+                const node = dom.nodeMap.get(comp.id.id) orelse continue;
+                const parent_node = node.parent orelse continue;
+                const parent_comp: *Component = parent_node.component;
+                var max_w: u16 = parent_comp.width - 1;
+                max_w -= parent_comp.view_props.padding.left;
+                max_w -= parent_comp.view_props.padding.right;
+
+                const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
+                const text_w = win.gwidth(text);
+
+                std.log.debug("=> {s} width: {} full text len{} Bounding box width: {}, breaks: {}", .{
+                    text,
+                    text_w,
+                    comp.text.len,
+                    max_w,
+                    comp.breaks,
+                });
+
+                if (parent_comp.view_props.scroll.horizontal) {
+                    std.log.debug("Horizontal scroll", .{});
+                    continue;
+                }
+
+                if (text_w > parent_comp.width) {
+                    comp.text = try breakLongWords(allocator, comp.text, max_w);
+                    std.log.debug("Breaking text: {s}", .{comp.text});
+                    return true;
+                }
+            },
+            else => {},
+        }
+    }
+
+    return false;
 }
 
 pub fn clayTerminalRender(
@@ -261,12 +318,11 @@ pub fn clayTerminalRender(
 
         // const component = componentMap.get(render_command.id);
 
-        const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
-
         // if (component) |comp| {
-        std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
         switch (render_command.command_type) {
             .text => {
+                const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
+                std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
                 const config = render_command.render_data.text;
                 consoleDrawText(
                     win,
@@ -283,6 +339,8 @@ pub fn clayTerminalRender(
                 scissor_box = fullWindow;
             },
             .rectangle => {
+                const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
+                std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
                 consoleDrawRectangle(
                     win,
                     comp,

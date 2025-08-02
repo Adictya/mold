@@ -29,6 +29,7 @@ pub fn insertNode(parent: *DomNode, node: *DomNode, anchor: ?*DomNode) void {
         node.next_sibling = parent.first_child;
         parent.first_child = node;
     }
+    node.parent = parent;
 }
 
 pub fn removeNode(parent: *DomNode, node: *DomNode) void {

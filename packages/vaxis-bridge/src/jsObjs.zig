@@ -1,6 +1,7 @@
 const std = @import("std");
 const napigen = @import("napigen");
 
+
 /// Convert JavaScript object to Zig struct
 pub fn jsObjectToStruct(
     comptime T: type,

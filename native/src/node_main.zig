@@ -2,7 +2,6 @@ const std = @import("std");
 const napigen = @import("napigen");
 const bridge = @import("bridge.zig");
 const cl = @import("zclay");
-const color = @import("./lib/color.zig");
 const renderer = @import("./lib/clay-renderer.zig");
 const jsoParser = @import("./lib/js_value_parser.zig");
 const Component = @import("./lib/components.zig");
@@ -22,9 +21,11 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    const scope_prefix = "(" ++ switch (scope) {
+    if (scope == .js_parser) return;
+    const scope_prefix = "\n(" ++ switch (scope) {
         .main => "main",
         .bridge => "bridge",
+        .js_value_parser => "js_parser",
         else => @tagName(scope),
     } ++ "): ";
 
@@ -140,16 +141,7 @@ fn createElement(
         .id = .ID(params.element_id),
         .string_id = text_copy,
         .ctype = if (params.text) .text else .box,
-        .x = 0,
-        .y = 0,
-        .width = 0,
-        .height = 0,
-        .padding = .{},
-        .fg_color = .default,
-        .bg_color = .default,
-        .border = .{},
-        .text = if (params.text) params.element_id else null,
-        .children = null,
+        .text = if (params.text) params.element_id else "",
     };
 
     const node = try gpa.allocator().create(dom.DomNode);
@@ -159,7 +151,7 @@ fn createElement(
 
     try dom.nodeMap.put(component.id.id, node);
 
-    if (dom.root == null and std.mem.eql(u8, params.element_id, "root")) {
+    if (dom.root == null and std.mem.eql(u8, params.element_id, "root-1")) {
         dom.root = node;
     }
 
@@ -198,37 +190,160 @@ fn replaceText(js: *napigen.JsContext, val: napigen.napi_value) anyerror!void {
 
 const setPropertyParams = struct {
     element_id: []const u8,
-    property: []const u8,
-    value: []const u8,
+    property: u8,
 };
 
-fn setProperty(js: *napigen.JsContext, val: napigen.napi_value) anyerror!void {
+const propertiesEnum = enum(u8) {
+    position = 0,
+    sizing = 1,
+    padding = 2,
+    childLayout = 3,
+    scroll = 4,
+    style = 5,
+    border = 6,
+    textStyle = 9,
+    text = 10,
+};
+
+fn setProperty(
+    js: *napigen.JsContext,
+    prop: napigen.napi_value,
+    simpleVal: []const u8,
+    complexVal: napigen.napi_value,
+) anyerror!void {
+    bridge.g_state.render_mutex.lock();
+    defer bridge.g_state.render_mutex.unlock();
     var params: setPropertyParams = undefined;
     _ = try jsoParser.jsObjectToStruct(
         setPropertyParams,
         js,
-        val,
+        prop,
         &params,
         gpa.allocator(),
     );
-
-    log.debug("[zig]: Setting property with tag: {s} => {}\n", .{ params.element_id, params });
 
     const id = cl.ElementId.ID(params.element_id);
 
     const node = dom.nodeMap.get(id.id) orelse return;
 
-    if (std.mem.eql(u8, params.property, "textContent")) {
-        node.component.text = params.value;
-    } else if (std.mem.eql(u8, params.property, "fgColor")) {
-        node.component.fg_color = try color.parseHexColor(params.value);
-    } else if (std.mem.eql(u8, params.property, "bgColor")) {
-        node.component.bg_color = try color.parseHexColor(params.value);
-    } else if (std.mem.eql(u8, params.property, "height")) {
-        node.component.height = try std.fmt.parseInt(u32, params.value, 10);
-    } else if (std.mem.eql(u8, params.property, "width")) {
-        node.component.width = try std.fmt.parseInt(u32, params.value, 10);
+    const property: propertiesEnum = @enumFromInt(params.property);
+
+    log.debug("[zig]: Setting property <{s}/> {s} \n", .{ params.element_id, @tagName(property) });
+
+    switch (property) {
+        .position => {
+            var value: Component.Position = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.Position,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.position = value;
+        },
+        .sizing => {
+            var value: Component.Sizing = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.Sizing,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.sizing = value;
+        },
+        .padding => {
+            var value: cl.Padding = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                cl.Padding,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.padding = value;
+        },
+        .childLayout => {
+            var value: Component.ChildLayout = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.ChildLayout,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.child_layout = value;
+        },
+        .scroll => {
+            var value: Component.Scroll = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.Scroll,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.scroll = value;
+        },
+        .style => {
+            var value: Component.Style = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.Style,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.style = value;
+            node.component.view_props.style.bg_color.populateColor() catch {};
+        },
+        .border => {
+            var value: Component.Border = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.Border,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.view_props.border = value;
+            node.component.view_props.border.color.populateColor() catch {};
+        },
+        .text => {
+            log.debug("Setting text: {s}", .{simpleVal});
+            const text_copy = try gpa.allocator().allocSentinel(u8, simpleVal.len, 0);
+            @memcpy(text_copy, simpleVal);
+            node.component.text = text_copy;
+        },
+        .textStyle => {
+            var value: Component.TextProps = .{};
+            _ = try jsoParser.jsObjectToStruct(
+                Component.TextProps,
+                js,
+                complexVal,
+                &value,
+                gpa.allocator(),
+            );
+            node.component.text_props = value;
+            node.component.text_props.bg_color.populateColor() catch {};
+            node.component.text_props.fg_color.populateColor() catch {};
+            node.component.text_props.ul_color.populateColor() catch {};
+        },
     }
+    log.debug("Updated component {}", .{node.component});
+
+    // if (std.mem.eql(u8, params.property, "textContent")) {
+    //     node.component.text = params.value;
+    // } else if (std.mem.eql(u8, params.property, "fgColor")) {
+    //     node.component.fg_color = try color.parseHexColor(params.value);
+    // } else if (std.mem.eql(u8, params.property, "bgColor")) {
+    //     node.component.bg_color = try color.parseHexColor(params.value);
+    // } else if (std.mem.eql(u8, params.property, "height")) {
+    //     node.component.height = try std.fmt.parseInt(u32, params.value, 10);
+    // } else if (std.mem.eql(u8, params.property, "width")) {
+    //     node.component.width = try std.fmt.parseInt(u32, params.value, 10);
+    // }
 
     try bridge.rerender();
 }
@@ -240,6 +355,8 @@ const insertNodeParams = struct {
 };
 
 fn insertNode(params: insertNodeParams) !void {
+    bridge.g_state.render_mutex.lock();
+    defer bridge.g_state.render_mutex.unlock();
     log.debug("[zig]: Inserting node with tag: {s} => {}\n", .{ params.node, params });
 
     const parent = dom.nodeMap.get(cl.ElementId.ID(params.parent).id) orelse return;
@@ -268,6 +385,8 @@ const removeNodeParams = struct {
 };
 
 fn removeNode(params: removeNodeParams) !void {
+    bridge.g_state.render_mutex.lock();
+    defer bridge.g_state.render_mutex.unlock();
     log.debug("removeNode: {s}\n", .{params.node});
     const parent = dom.nodeMap.get(cl.ElementId.ID(params.parent).id) orelse return;
     const node = dom.nodeMap.get(cl.ElementId.ID(params.node).id) orelse return;
