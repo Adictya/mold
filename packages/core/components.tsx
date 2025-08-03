@@ -3,6 +3,13 @@ import { children as resolveChildren } from "solid-js";
 export enum BorderType {
   SingleRounded = 0,
   SingleSquare = 1,
+  doubleSquare = 2,
+  ThickSquare = 3,
+  ThinSquare = 4,
+  HugVertical = 5,
+  HugVerticalFlipped = 6,
+  HugHorizontal = 7,
+  HugHorizontalFlipped = 8,
 }
 
 export enum SizingType {
@@ -103,9 +110,12 @@ type ViewProps = {
       right?: boolean;
     };
     type?: BorderType;
-    color?: Color;
+    fg_color?: Color;
+    bg_color?: Color;
   };
   children?: any;
+  debug_id?: string;
+  onClick?: (event: any) => void;
 };
 
 export const View = (props: ViewProps) => {
@@ -120,6 +130,8 @@ export const View = (props: ViewProps) => {
       scroll={props.scroll}
       style={props.style}
       border={props.border}
+      debug_id={props.debug_id}
+      onClick={props.onClick}
     >
       {resolved()}
     </div>
@@ -127,10 +139,10 @@ export const View = (props: ViewProps) => {
 };
 
 type TextProps = {
-  fgColor?: string;
-  bgColor?: string;
-  ulColor?: string;
-  ulStyle?: UnderlineType;
+  fg_color?: Color;
+  bg_color?: Color;
+  ul_color?: Color;
+  ul_style?: UnderlineType;
 
   bold?: boolean;
   dim?: boolean;
@@ -141,9 +153,12 @@ type TextProps = {
   strikethrough?: boolean;
 
   children: string | string[];
+  debug_id?: string;
 };
 
-export const Text = ({ children, ...props }: TextProps) => {
+export const Text = ({ children, debug_id, ...props }: TextProps) => {
   const resolved = resolveChildren(() => children);
-  return <span text={resolved()} textStyle={{ ...props }} />;
+  return (
+    <span text={resolved()} textStyle={{ ...props }} debug_id={debug_id} />
+  );
 };

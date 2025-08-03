@@ -40,38 +40,38 @@ pub fn build(b: *std.Build) void {
     b.getInstallStep().dependOn(&copy_node_step.step);
 
     if (Build_exe) {
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+        const exe_mod = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
 
-    exe_mod.addImport("vaxis", vaxis.module("vaxis"));
-    exe_mod.addImport("zclay", zclay.module("zclay"));
-    exe_mod.addImport("mold_native_lib", lib_mod);
+        exe_mod.addImport("vaxis", vaxis.module("vaxis"));
+        exe_mod.addImport("zclay", zclay.module("zclay"));
+        exe_mod.addImport("mold_native_lib", lib_mod);
 
-    const exe = b.addExecutable(.{
-        .name = "mold_test",
-        .root_module = exe_mod,
-    });
+        const exe = b.addExecutable(.{
+            .name = "mold_test",
+            .root_module = exe_mod,
+        });
 
-    b.installArtifact(exe);
+        b.installArtifact(exe);
 
-    const run_cmd = b.addRunArtifact(exe);
+        const run_cmd = b.addRunArtifact(exe);
 
-    run_cmd.step.dependOn(b.getInstallStep());
+        run_cmd.step.dependOn(b.getInstallStep());
 
-    // This allows the user to pass arguments to the application in the build
-    // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+        // This allows the user to pass arguments to the application in the build
+        // command itself, like this: `zig build run -- arg1 arg2 etc`
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
 
-    // This creates a build step. It will be visible in the `zig build --help` menu,
-    // and can be selected like this: `zig build run`
-    // This will evaluate the `run` step rather than the default, which is "install".
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+        // This creates a build step. It will be visible in the `zig build --help` menu,
+        // and can be selected like this: `zig build run`
+        // This will evaluate the `run` step rather than the default, which is "install".
+        const run_step = b.step("run", "Run the app");
+        run_step.dependOn(&run_cmd.step);
     }
 
     // Creates a step for unit testing. This only builds the test executable

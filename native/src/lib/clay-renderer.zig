@@ -43,7 +43,6 @@ const BoundingBox = struct {
 fn convBoundingBox(
     bounding_box: cl.BoundingBox,
 ) BoundingBox {
-    std.log.debug("Bounding box: {}", .{bounding_box.x});
     return BoundingBox{
         .x = @as(u16, if (bounding_box.x < 0) 0 else @intFromFloat(bounding_box.x)),
         .y = @as(u16, if (bounding_box.y < 0) 0 else @intFromFloat(bounding_box.y)),
@@ -78,17 +77,14 @@ fn consoleDrawText(
     var iter = win.screen.unicode.graphemeIterator(text);
 
     while (iter.next()) |grapheme| {
-        if (bounding_box.x + @as(u16, @intCast(col)) > scissor_box.x + scissor_box.width) {
+        if (@as(u16, @intCast(col)) > scissor_box.x + scissor_box.width) {
             break;
         }
         const s = grapheme.bytes(text);
         const w = win.gwidth(s);
         if (w == 0) continue;
 
-        var style: Cell.Style = .{
-            .fg = component.text_props.fg_color.color,
-            .bg = component.text_props.bg_color.color,
-        };
+        var style = component.text_props.toVaxis();
 
         const current_cell_opt = win.readCell(
             bounding_box.x + @as(u16, @intCast(col)),
@@ -140,6 +136,7 @@ fn consoleDrawRectangle(
     scissor_box: BoundingBox,
 ) void {
     _ = config;
+    // std.log.debug("Rendering rect: {}", .{bounding_box});
     const top_start = bounding_box.y;
     const top_end = bounding_box.y + bounding_box.height;
     const left_start = bounding_box.x;
@@ -149,9 +146,51 @@ fn consoleDrawRectangle(
 
     const glyphs = switch (opts.type) {
         .single_rounded => Component.single_rounded,
-        .single_square => Component.single_rounded,
+        .single_squared => Component.single_rounded,
+        .double_squared => Component.double_squared,
+        .thick_squared => Component.thick_squared,
+        .thin_squared => Component.thin_squared,
+        .hug_vertical, .hug_vertical_flipped, .hug_horizontal, .hug_horizontal_flipped => Component.thick_hug,
     };
 
+    // For hug borders, the order is: top bottom left right (different from others)
+    const is_hug_border = switch (opts.type) {
+        .hug_vertical, .hug_vertical_flipped, .hug_horizontal, .hug_horizontal_flipped => true,
+        else => false,
+    };
+
+    // Check if we're using a flipped variant
+    const is_flipped = switch (opts.type) {
+        .hug_vertical_flipped, .hug_horizontal_flipped => true,
+        else => false,
+    };
+
+    // For hug borders with flipped variants
+    var top_glyph_idx: usize = 0;
+    var bottom_glyph_idx: usize = 1;
+    var left_glyph_idx: usize = 2;
+    var right_glyph_idx: usize = 3;
+
+    // Swap top/bottom or left/right for flipped variants
+    if (is_flipped) {
+        if (opts.type == .hug_vertical_flipped) {
+            // Swap left and right
+            left_glyph_idx = 3;
+            right_glyph_idx = 2;
+        } else if (opts.type == .hug_horizontal_flipped) {
+            // Swap top and bottom
+            top_glyph_idx = 1;
+            bottom_glyph_idx = 0;
+        }
+    }
+
+    // For regular borders
+    const top_edge: Cell.Character = if (is_hug_border) .{ .grapheme = glyphs[top_glyph_idx], .width = 1 } else .{ .grapheme = glyphs[1], .width = 1 };
+    const bottom_edge: Cell.Character = if (is_hug_border) .{ .grapheme = glyphs[bottom_glyph_idx], .width = 1 } else .{ .grapheme = glyphs[1], .width = 1 };
+    const left_edge: Cell.Character = if (is_hug_border) .{ .grapheme = glyphs[left_glyph_idx], .width = 1 } else .{ .grapheme = glyphs[3], .width = 1 };
+    const right_edge: Cell.Character = if (is_hug_border) .{ .grapheme = glyphs[right_glyph_idx], .width = 1 } else .{ .grapheme = glyphs[3], .width = 1 };
+
+    // For non-hug borders, these are used directly
     const top_left: Cell.Character = .{ .grapheme = glyphs[0], .width = 1 };
     const horizontal: Cell.Character = .{ .grapheme = glyphs[1], .width = 1 };
     const top_right: Cell.Character = .{ .grapheme = glyphs[2], .width = 1 };
@@ -168,10 +207,9 @@ fn consoleDrawRectangle(
 
     var grapheme: Cell.Character = .{ .grapheme = " ", .width = 1 };
     const style: Cell.Style = .{
-        .fg = opts.color.color,
-        .bg = component.view_props.style.bg_color.color,
+        .fg = opts.fg_color.color,
+        .bg = if (opts.bg_color.unset) component.view_props.style.bg_color.color else opts.bg_color.color,
     };
-    std.log.debug("Border style: {}", .{style});
 
     for (top_start..top_end) |y| {
         if (top_end > scissor_box.y + scissor_box.height) {
@@ -182,45 +220,110 @@ fn consoleDrawRectangle(
                 break;
             }
 
-            const is_top = y == top_start;
-            const is_bottom = y == top_end - 1;
-            const is_left = x == left_start;
-            const is_right = x == left_end - 1;
-
-            const on_border = is_top or is_bottom or is_left or is_right;
-            if (on_border) {
-                // Handle corners first
-                if (is_top and is_left) {
-                    grapheme = if (loc.top and loc.left) top_left else if (loc.top) horizontal else if (loc.left) vertical else grapheme;
-                } else if (is_top and is_right) {
-                    grapheme = if (loc.top and loc.right) top_right else if (loc.top) horizontal else if (loc.right) vertical else grapheme;
-                } else if (is_bottom and is_left) {
-                    grapheme = if (loc.bottom and loc.left) bottom_left else if (loc.bottom) horizontal else if (loc.left) vertical else grapheme;
-                } else if (is_bottom and is_right) {
-                    grapheme = if (loc.bottom and loc.right) bottom_right else if (loc.bottom) horizontal else if (loc.right) vertical else grapheme;
-                }
-                // Handle edges
-                else if (is_top and loc.top) {
-                    grapheme = horizontal;
-                } else if (is_bottom and loc.bottom) {
-                    grapheme = horizontal;
-                } else if (is_left and loc.left) {
-                    grapheme = vertical;
-                } else if (is_right and loc.right) {
-                    grapheme = vertical;
-                }
-            }
-
             win.writeCell(
                 @as(u16, @intCast(x)),
                 @as(u16, @intCast(y)),
                 .{
-                    .char = grapheme,
-                    .style = style,
+                    .char = .{ .grapheme = " ", .width = 1 },
+                    .style = .{
+                        .fg = .default,
+                        .bg = component.view_props.style.bg_color.color,
+                    },
                 },
             );
 
-            grapheme = .{ .grapheme = " ", .width = 1 };
+            const is_top = if (bounding_box.height <= 1) false else y == top_start;
+            const is_bottom = if (bounding_box.height <= 1) false else y == top_end - 1;
+            const is_left = if (bounding_box.width <= 1) false else x == left_start;
+            const is_right = if (bounding_box.width <= 1) false else x == left_end - 1;
+
+            const on_border = is_top or is_bottom or is_left or is_right;
+            const border_enabled = loc.top or loc.bottom or loc.left or loc.right;
+            if (on_border and border_enabled) {
+                // For hug borders, handle corners based on variant
+                if (is_hug_border) {
+                    const is_horizontal = switch (opts.type) {
+                        .hug_horizontal, .hug_horizontal_flipped => true,
+                        else => false,
+                    };
+
+                    // Handle corners for hug borders
+                    if (is_top and is_left) {
+                        grapheme = if (loc.top and loc.left)
+                            (if (is_horizontal) top_edge else left_edge)
+                        else if (loc.top) top_edge else if (loc.left) left_edge else grapheme;
+                    } else if (is_top and is_right) {
+                        grapheme = if (loc.top and loc.right)
+                            (if (is_horizontal) top_edge else right_edge)
+                        else if (loc.top) top_edge else if (loc.right) right_edge else grapheme;
+                    } else if (is_bottom and is_left) {
+                        grapheme = if (loc.bottom and loc.left)
+                            (if (is_horizontal) bottom_edge else left_edge)
+                        else if (loc.bottom) bottom_edge else if (loc.left) left_edge else grapheme;
+                    } else if (is_bottom and is_right) {
+                        grapheme = if (loc.bottom and loc.right)
+                            (if (is_horizontal) bottom_edge else right_edge)
+                        else if (loc.bottom) bottom_edge else if (loc.right) right_edge else grapheme;
+                    }
+                    // Handle edges for hug borders
+                    else if (is_top and loc.top) {
+                        grapheme = top_edge;
+                    } else if (is_bottom and loc.bottom) {
+                        grapheme = bottom_edge;
+                    } else if (is_left and loc.left) {
+                        grapheme = left_edge;
+                    } else if (is_right and loc.right) {
+                        grapheme = right_edge;
+                    }
+                } else {
+                    // Handle corners for regular borders
+                    if (is_top and is_left) {
+                        grapheme = if (loc.top and loc.left) top_left else if (loc.top) horizontal else if (loc.left) vertical else grapheme;
+                    } else if (is_top and is_right) {
+                        grapheme = if (loc.top and loc.right) top_right else if (loc.top) horizontal else if (loc.right) vertical else grapheme;
+                    } else if (is_bottom and is_left) {
+                        grapheme = if (loc.bottom and loc.left) bottom_left else if (loc.bottom) horizontal else if (loc.left) vertical else grapheme;
+                    } else if (is_bottom and is_right) {
+                        grapheme = if (loc.bottom and loc.right) bottom_right else if (loc.bottom) horizontal else if (loc.right) vertical else grapheme;
+                    }
+                    // Handle edges for regular borders
+                    else if (is_top and loc.top) {
+                        grapheme = horizontal;
+                    } else if (is_bottom and loc.bottom) {
+                        grapheme = horizontal;
+                    } else if (is_left and loc.left) {
+                        grapheme = vertical;
+                    } else if (is_right and loc.right) {
+                        grapheme = vertical;
+                    }
+                }
+
+                if ((is_top and loc.top) or (is_bottom and loc.bottom) or
+                    (is_left and loc.left) or (is_right and loc.right))
+                {
+                    win.writeCell(
+                        @as(u16, @intCast(x)),
+                        @as(u16, @intCast(y)),
+                        .{
+                            .char = grapheme,
+                            .style = style,
+                        },
+                    );
+                }
+
+                // std.log.debug("Border type: {s}", .{@tagName(component.view_props.border.type)});
+                // std.log.debug("Border where: {any}", .{component.view_props.border.where});
+                // std.log.debug("x: {}, y: {}, is_top: {}, is_bottom: {}, is_left: {}, is_right: {}", .{
+                //     x,
+                //     y,
+                //     is_top,
+                //     is_bottom,
+                //     is_left,
+                //     is_right,
+                // });
+                // std.log.debug("grapheme: {s}", .{grapheme.grapheme});
+                // std.log.debug("style: {any} {any}", .{ style.fg.rgb, style.bg.rgb });
+            }
         }
     }
 }
@@ -267,16 +370,16 @@ pub fn clayTerminalRenderValidate(
                 const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
                 const text_w = win.gwidth(text);
 
-                std.log.debug("=> {s} width: {} full text len{} Bounding box width: {}, breaks: {}", .{
-                    text,
-                    text_w,
-                    comp.text.len,
-                    max_w,
-                    comp.breaks,
-                });
+                // std.log.debug("=> {s} width: {} full text len{} Bounding box width: {}, breaks: {}", .{
+                //     text,
+                //     text_w,
+                //     comp.text.len,
+                //     max_w,
+                //     comp.breaks,
+                // });
 
                 if (parent_comp.view_props.scroll.horizontal) {
-                    std.log.debug("Horizontal scroll", .{});
+                    // std.log.debug("Horizontal scroll", .{});
                     continue;
                 }
 
@@ -314,7 +417,7 @@ pub fn clayTerminalRender(
         const render_command = renderCommands[j];
         const bounding_box = render_command.bounding_box;
 
-        std.log.debug("Recieved render command: {s}", .{@tagName(render_command.command_type)});
+        // std.log.debug("Recieved render command: {s}", .{@tagName(render_command.command_type)});
 
         // const component = componentMap.get(render_command.id);
 
@@ -322,7 +425,7 @@ pub fn clayTerminalRender(
         switch (render_command.command_type) {
             .text => {
                 const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
-                std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
+                // std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
                 const config = render_command.render_data.text;
                 consoleDrawText(
                     win,
@@ -340,7 +443,7 @@ pub fn clayTerminalRender(
             },
             .rectangle => {
                 const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
-                std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
+                // std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
                 consoleDrawRectangle(
                     win,
                     comp,

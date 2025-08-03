@@ -102,13 +102,21 @@ pub const BorderWhere = struct {
 
 pub const BorderType = enum(u8) {
     single_rounded = 0,
-    single_square = 1,
+    single_squared = 1,
+    double_squared = 2,
+    thick_squared = 3,
+    thin_squared = 4,
+    hug_vertical = 5,
+    hug_vertical_flipped = 6,
+    hug_horizontal = 7,
+    hug_horizontal_flipped = 8,
 };
 
 pub const Border = struct {
     where: BorderWhere = .{},
     type: BorderType = .single_rounded,
-    color: Color = defaultFgColor,
+    fg_color: Color = defaultFgColor,
+    bg_color: Color = defaultBgColor,
 
     pub fn toClay(self: *const Border) cl.BorderElementConfig {
         return .{
@@ -129,9 +137,10 @@ pub const ViewProps = struct {
     sizing: Sizing = .{},
     padding: cl.Padding = .{},
     child_layout: ChildLayout = .{},
-    scroll: cl.ClipElementConfig = .{.horizontal = true, .vertical = true},
+    scroll: cl.ClipElementConfig = .{ .horizontal = true, .vertical = true },
     style: Style = .{},
     border: Border = .{},
+    clickable: bool = false,
     // children are handled by the view element itself in Zig, not a prop
 
     pub fn toClay(self: *const ViewProps) cl.ElementDeclaration {
@@ -183,6 +192,30 @@ pub const TextProps = struct {
             .alignement = self.alignment,
         };
     }
+
+    pub fn toVaxis(self: *const TextProps) vaxis.Style {
+        const ul_style: vaxis.Style.Underline = switch (self.ul_style) {
+            .off => .off,
+            .single => .single,
+            .double => .double,
+            .curly => .curly,
+            .dotted => .dotted,
+            .dashed => .dashed,
+        };
+        return .{
+            .fg = self.fg_color.color,
+            .bg = self.bg_color.color,
+            .ul = self.ul_color.color,
+            .ul_style = ul_style,
+            .bold = self.bold,
+            .dim = self.dim,
+            .italic = self.italic,
+            .blink = self.blink,
+            .reverse = self.reverse,
+            .invisible = self.invisible,
+            .strikethrough = self.strikethrough,
+        };
+    }
 };
 
 ctype: ComponentType,
@@ -196,6 +229,14 @@ text: []const u8 = "", // Null-terminated string for text content
 breaks: u16 = 0,
 
 pub const single_rounded: [6][]const u8 = .{ "╭", "─", "╮", "│", "╯", "╰" };
+pub const single_squared: [6][]const u8 = .{ "┌", "─", "┐", "│", "┘", "└" };
+
+pub const double_squared: [6][]const u8 = .{ "╔", "═", "╗", "║", "╝", "╚" };
+
+pub const thick_squared: [6][]const u8 = .{ "┏", "━", "┓", "┃", "┛", "┗" };
+pub const thin_squared: [6][]const u8 = .{ "┍", "─", "┑", "│", "┙", "└" };
+
+pub const thick_hug: [6][]const u8 = .{ "▀", "▂", "▐", "▌", " ", " " };
 
 pub fn format(
     self: *const Component,

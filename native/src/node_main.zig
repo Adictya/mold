@@ -43,11 +43,14 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
 var g_tsfn: ?napigen.napi_threadsafe_function = null;
 
-fn eventCallback(event: *bridge.AppEvent) void {
+fn eventCallback(event: bridge.AppEvent) void {
+    const event_to_send = gpa.allocator().create(bridge.AppEvent) catch unreachable;
+    event_to_send.* = event;
+    std.log.debug("Calling mouse event {}", .{event_to_send});
     if (g_tsfn) |tsf| {
         _ = napigen.napi_call_threadsafe_function(
             tsf,
-            @ptrCast(@constCast(event)),
+            @ptrCast(@constCast(event_to_send)),
             napigen.napi_tsfn_blocking,
         );
     }
@@ -68,10 +71,13 @@ fn callJs(
 
     switch (event_ptr.*) {
         .key => |key_evt| {
-            log.debug("Event callback called with event {}", .{key_evt});
-            _ = js.callFunction(undefValue, val, key_evt) catch |err| log.err("Failed to call function: {}", .{err});
+            _ = js.callFunction(undefValue, val, .{ 0, key_evt }) catch |err| log.err("Failed to call function: {}", .{err});
+        },
+        .mouse => |mouse_evt| {
+            _ = js.callFunction(undefValue, val, .{ 1, mouse_evt }) catch |err| log.err("Failed to call function: {}", .{err});
         },
     }
+    gpa.allocator().destroy(event_ptr);
 }
 
 fn init(js: *napigen.JsContext, callback: napigen.napi_value) !void {
@@ -113,14 +119,10 @@ const createElementParams = struct {
     text: bool = false,
 };
 
-const createElementResult = struct {
-    element_id: []const u8,
-};
-
 fn createElement(
     js: *napigen.JsContext,
     args: napigen.napi_value,
-) anyerror![]u8 {
+) anyerror!u32 {
     var params: createElementParams = undefined;
     _ = try jsoParser.jsObjectToStruct(
         createElementParams,
@@ -155,11 +157,11 @@ fn createElement(
         dom.root = node;
     }
 
-    return text_copy;
+    return component.id.id;
 }
 
 const replaceTextParams = struct {
-    element_id: []const u8,
+    element_id: u32,
     text: []const u8,
 };
 
@@ -173,23 +175,21 @@ fn replaceText(js: *napigen.JsContext, val: napigen.napi_value) anyerror!void {
         gpa.allocator(),
     );
 
-    log.debug("[zig]: Replacing text with tag: {s} => {}\n", .{ params.element_id, params });
+    log.debug("[zig]: Replacing text with tag: {} => {}\n", .{ params.element_id, params });
 
-    const id = cl.ElementId.ID(params.element_id);
-
-    const node = dom.nodeMap.get(id.id) orelse return;
+    const node = dom.nodeMap.get(params.element_id) orelse return;
 
     node.component.id = .ID(params.text);
     node.component.text = params.text;
 
-    _ = dom.nodeMap.remove(id.id);
-    try dom.nodeMap.put(id.id, node);
+    _ = dom.nodeMap.remove(params.element_id);
+    try dom.nodeMap.put(params.element_id, node);
 
     try bridge.rerender();
 }
 
 const setPropertyParams = struct {
-    element_id: []const u8,
+    element_id: u32,
     property: u8,
 };
 
@@ -203,6 +203,8 @@ const propertiesEnum = enum(u8) {
     border = 6,
     textStyle = 9,
     text = 10,
+    debug_id = 11,
+    clickable = 12,
 };
 
 fn setProperty(
@@ -222,15 +224,19 @@ fn setProperty(
         gpa.allocator(),
     );
 
-    const id = cl.ElementId.ID(params.element_id);
+    const id = params.element_id;
 
-    const node = dom.nodeMap.get(id.id) orelse return;
+    const node = dom.nodeMap.get(id) orelse return;
 
     const property: propertiesEnum = @enumFromInt(params.property);
 
-    log.debug("[zig]: Setting property <{s}/> {s} \n", .{ params.element_id, @tagName(property) });
+    log.debug("[zig]: Setting property <{}/> {s} \n", .{ params.element_id, @tagName(property) });
 
     switch (property) {
+        .debug_id => {
+            log.debug("comopnentId: {} debug id: {s}", .{ params.element_id, simpleVal });
+            return;
+        },
         .position => {
             var value: Component.Position = .{};
             _ = try jsoParser.jsObjectToStruct(
@@ -308,7 +314,14 @@ fn setProperty(
                 gpa.allocator(),
             );
             node.component.view_props.border = value;
-            node.component.view_props.border.color.populateColor() catch {};
+            node.component.view_props.border.fg_color.populateColor() catch {};
+            node.component.view_props.border.bg_color.populateColor() catch {};
+        },
+        .clickable => {
+            // const clickableValue: bool = undefined;
+            // _ = napigen.napi_get_value_bool(js.env, complexVal, @constCast(&clickableValue));
+            // std.log.debug("Setting clickable: {}", .{clickableValue});
+            node.component.view_props.clickable = true;
         },
         .text => {
             log.debug("Setting text: {s}", .{simpleVal});
@@ -349,19 +362,19 @@ fn setProperty(
 }
 
 const insertNodeParams = struct {
-    parent: []const u8,
-    node: []const u8,
-    anchor: ?[]const u8,
+    parent: u32,
+    node: u32,
+    anchor: ?u32,
 };
 
 fn insertNode(params: insertNodeParams) !void {
     bridge.g_state.render_mutex.lock();
     defer bridge.g_state.render_mutex.unlock();
-    log.debug("[zig]: Inserting node with tag: {s} => {}\n", .{ params.node, params });
+    log.debug("[zig]: Inserting node with tag: {} => {}\n", .{ params.node, params });
 
-    const parent = dom.nodeMap.get(cl.ElementId.ID(params.parent).id) orelse return;
-    const node = dom.nodeMap.get(cl.ElementId.ID(params.node).id) orelse return;
-    const anchor = if (params.anchor) |a| dom.nodeMap.get(cl.ElementId.ID(a).id) else null;
+    const parent = dom.nodeMap.get(params.parent) orelse return;
+    const node = dom.nodeMap.get(params.node) orelse return;
+    const anchor = if (params.anchor) |a| dom.nodeMap.get(a) else null;
 
     dom.insertNode(parent, node, anchor);
 
@@ -369,27 +382,27 @@ fn insertNode(params: insertNodeParams) !void {
 }
 
 const isTextNodeParams = struct {
-    node: []const u8,
+    node: u32,
 };
 
 fn isTextNode(params: isTextNodeParams) !bool {
-    log.debug("isTextNode: {s}\n", .{params.node});
-    const node = dom.nodeMap.get(cl.ElementId.ID(params.node).id) orelse return false;
+    log.debug("isTextNode: {}\n", .{params.node});
+    const node = dom.nodeMap.get(params.node) orelse return false;
 
     return node.component.ctype == .text;
 }
 
 const removeNodeParams = struct {
-    parent: []const u8,
-    node: []const u8,
+    parent: u32,
+    node: u32,
 };
 
 fn removeNode(params: removeNodeParams) !void {
     bridge.g_state.render_mutex.lock();
     defer bridge.g_state.render_mutex.unlock();
-    log.debug("removeNode: {s}\n", .{params.node});
-    const parent = dom.nodeMap.get(cl.ElementId.ID(params.parent).id) orelse return;
-    const node = dom.nodeMap.get(cl.ElementId.ID(params.node).id) orelse return;
+    log.debug("removeNode: {}\n", .{params.node});
+    const parent = dom.nodeMap.get(params.parent) orelse return;
+    const node = dom.nodeMap.get(params.node) orelse return;
 
     dom.removeNode(parent, node);
 
@@ -404,13 +417,13 @@ const relationShip = enum(u8) {
 };
 
 const getRelatedNodesParams = struct {
-    node: []const u8,
+    node: u32,
     relationship: u8,
 };
 
-fn getRelatedNodes(params: getRelatedNodesParams) !?[]const u8 {
-    std.debug.print("getRelatedNodes: {s} rel:{}\n", .{ params.node, params.relationship });
-    const node = dom.nodeMap.get(cl.ElementId.ID(params.node).id) orelse return null;
+fn getRelatedNodes(params: getRelatedNodesParams) !?u32 {
+    std.debug.print("getRelatedNodes: {} rel:{}\n", .{ params.node, params.relationship });
+    const node = dom.nodeMap.get(params.node) orelse return null;
 
     if (params.relationship > @intFromEnum(relationShip.first_child)) {
         return null;
@@ -424,7 +437,7 @@ fn getRelatedNodes(params: getRelatedNodesParams) !?[]const u8 {
     };
 
     if (related_node) |related| {
-        return related.component.string_id;
+        return related.component.id.id;
     }
 
     return null;

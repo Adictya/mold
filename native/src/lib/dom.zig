@@ -21,13 +21,30 @@ pub const DomNode = struct {
 
 pub fn insertNode(parent: *DomNode, node: *DomNode, anchor: ?*DomNode) void {
     if (anchor) |a| {
-        node.previous_sibling = a.previous_sibling;
-        node.next_sibling = a;
-        a.previous_sibling = node;
+        node.previous_sibling = a;
+        node.next_sibling = a.next_sibling;
+        if (a.next_sibling) |next| {
+            next.previous_sibling = node;
+        }
+        a.next_sibling = node;
     } else {
-        node.previous_sibling = null;
-        node.next_sibling = parent.first_child;
-        parent.first_child = node;
+        // Insert at the end of the children list
+        if (parent.first_child) |first| {
+            // Find the last child
+            var last = first;
+            while (last.next_sibling) |next| {
+                last = next;
+            }
+            // Insert after the last child
+            node.previous_sibling = last;
+            node.next_sibling = null;
+            last.next_sibling = node;
+        } else {
+            // No children yet, this becomes the first child
+            node.previous_sibling = null;
+            node.next_sibling = null;
+            parent.first_child = node;
+        }
     }
     node.parent = parent;
 }

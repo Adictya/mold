@@ -3,6 +3,7 @@ import Core from "./core";
 
 type listener = (event: any) => void;
 const listeners: listener[] = [];
+const onClickListeners: Record<string, () => void> = {};
 
 export const addListener = (listener: listener) => {
   listeners.push(listener);
@@ -20,12 +21,14 @@ const PropertiesEnum = Object.freeze({
   bgColor: 8,
   textStyle: 9,
   text: 10,
+  debug_id: 11,
+  onClick: 12,
 });
 
 // DomNode is now just a string ID that references a node in the Zig implementation
-type DomNode = { id: string };
+type DomNode = { id: number };
 
-const m = (id?: string): DomNode | undefined => (id ? { id } : undefined);
+const m = (id?: number): DomNode | undefined => (id ? { id } : undefined);
 const um = (d: DomNode): string => d.id;
 
 // Debug logging helper
@@ -33,8 +36,17 @@ function log(operation: string, ...args: any[]) {
   // console.log(`[DEBUG] ${operation}:`, args);
 }
 
-Core.init((...event) => {
-  listeners.forEach((listener) => listener(event));
+Core.init((eventType: bigint, eventData: any) => {
+  log("Event received:", eventType, "data:", eventData);
+  if (eventType === 1n) {
+    const {id} = eventData;
+    const eventId = `${id}`;
+    if (eventId in onClickListeners) {
+      onClickListeners[`${id}`](eventData);
+    }
+  } else {
+    listeners.forEach((listener) => listener(eventData));
+  }
 });
 
 const idCounter = {
@@ -64,11 +76,7 @@ export const {
       throw new Error(`Element not supportd: ${tagName}`);
     }
 
-    log("1createElement", { tagName, id: idCounter[tagName] });
-
     idCounter[tagName] += 1;
-
-    log("2createElement", { tagName, id: idCounter[tagName] });
     const elementId = Core.createElement({
       element_id: `${tagName}-${idCounter[tagName]}`,
       text: tagName === "span",
@@ -111,16 +119,22 @@ export const {
       const property = PropertiesEnum[name];
       var [simpleValue, complexValue] = [
         "string",
-        "boolean",
-        "number",
       ].includes(typeof value)
         ? [value, undefined]
         : ["", value];
 
       if (name === "text" && complexValue) {
-        simpleValue = complexValue.join(" ");
+        simpleValue = complexValue.join("");
         complexValue = undefined;
       }
+
+      if (name === "onClick") {
+        complexValue = true;
+        onClickListeners[node.id] = value;
+
+        console.log("Setting onClick", complexValue);
+      }
+
 
       Core.setProperty(
         {
@@ -205,6 +219,10 @@ export const {
     log("result of getNextSibling", { result });
     return m(result);
   },
+});
+
+process.on("SIGINT", () => {
+  Core.shutdown();
 });
 
 // Forward Solid control flow

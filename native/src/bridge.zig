@@ -12,6 +12,7 @@ pub const EventType = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
     rerender: bool,
+    mouse: vaxis.Mouse,
 };
 
 pub const KeyEvent = struct {
@@ -20,8 +21,13 @@ pub const KeyEvent = struct {
     mods: vaxis.Key.Modifiers,
 };
 
+pub const MouseEvent = struct {
+    id: u32,
+};
+
 pub const AppEvent = union(enum) {
     key: KeyEvent,
+    mouse: MouseEvent,
 };
 
 pub var g_state: struct {
@@ -30,7 +36,7 @@ pub var g_state: struct {
     vx: ?*vaxis.Vaxis = null,
     event_loop: ?*vaxis.Loop(EventType) = null,
     event_thread: ?std.Thread = null,
-    event_callback: ?*const fn (*AppEvent) void = null,
+    event_callback: ?*const fn (AppEvent) void = null,
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     render_mutex: std.Thread.Mutex = .{},
     components: []const Component = &.{},
@@ -40,7 +46,7 @@ pub var g_state: struct {
 
 pub fn tuiInit(
     allocator: std.mem.Allocator,
-    callback: *const fn (*AppEvent) void,
+    callback: *const fn (AppEvent) void,
 ) !void {
     g_state.event_callback = callback;
 
@@ -64,7 +70,9 @@ pub fn tuiInit(
     renderer.display_width = try vaxis.DisplayWidth.init(allocator);
     cl.setMeasureTextFunction(void, {}, renderer.consoleMeasureText);
 
-    try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
+    // try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
+
+    try g_state.vx.?.setMouseMode(g_state.tty.?.anyWriter(), true);
 
     try g_state.vx.?.queryTerminal(
         g_state.tty.?.anyWriter(),
@@ -109,7 +117,7 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     g_state.event_loop.?.stop();
     g_state.running.store(false, .monotonic);
 
-    g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
+    // g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
 
     g_state.vx.?.deinit(allocator, g_state.tty.?.anyWriter());
     g_state.tty.?.deinit();
@@ -126,33 +134,51 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     std.process.exit(0);
 }
 
+pub fn componentClickHandler(_: cl.ElementId, pd: cl.PointerData, user_data: *const Component) void {
+    const comp: *const Component = @ptrCast(@alignCast(user_data));
+    log.debug("CLAY: Click on {s} state:{s}", .{ comp.string_id, @tagName(pd.state) });
+    const mouse_event = AppEvent{ .mouse = .{
+        .id = comp.id.id,
+    } };
+    switch (pd.state) {
+        .pressed, .pressed_this_frame => {
+            g_state.event_callback.?(mouse_event);
+        },
+        else => {},
+    }
+}
+
 pub fn renderDFS(
     node: *dom.DomNode,
 ) !void {
     const comp = node.component;
     const compPtr = comp;
     const compId = comp.id;
-    log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
+    // log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
     switch (comp.ctype) {
         .box => {
             var config = comp.view_props.toClay();
             config.id = compId;
             config.user_data = @constCast(compPtr);
+            config.background_color = .{ 255, 255, 255, 255 };
             cl.UI()(config)({
+                if (comp.view_props.clickable) {
+                    cl.onHover(*const Component, compPtr, componentClickHandler);
+                }
                 if (node.first_child) |children| {
                     try renderDFS(children);
                 }
             });
-            if (node.next_sibling) |sibling| {
-                try renderDFS(sibling);
-            }
         },
         .text => {
             var config = comp.text_props.toClay();
             config.user_data = @constCast(compPtr);
-            log.debug("Rendering text: {s}", .{comp.text});
+            // log.debug("Rendering text: {s}", .{comp.text});
             cl.text(comp.text, config);
         },
+    }
+    if (node.next_sibling) |sibling| {
+        try renderDFS(sibling);
     }
 }
 
@@ -162,6 +188,8 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
 
     while (g_state.running.load(.monotonic)) {
         const event = loop.nextEvent();
+
+        var rerender_ui = true;
 
         switch (event) {
             .key_press => |key| {
@@ -174,7 +202,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 if (key.text) |key_text| {
                     key_event.key.text = key_text;
                 }
-                callback(@constCast(&key_event));
+                callback(key_event);
 
                 // if (key.matches('c', .{ .ctrl = true })) {
                 //     g_state.running.store(false, .monotonic);
@@ -191,8 +219,22 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 ) catch |err| {
                     log.err("Resize error: {}", .{err});
                 };
+                cl.setLayoutDimensions(.{
+                    .w = @floatFromInt(ws.cols),
+                    .h = @floatFromInt(ws.rows),
+                });
             },
-            else => {},
+            .mouse => |mouse| {
+                log.debug("Vaxis Mouse event: {}", .{mouse});
+                const pressed: bool = switch (mouse.button) {
+                    .left, .right, .middle => true,
+                    else => false,
+                };
+                cl.setPointerState(.{ .x = @floatFromInt(mouse.col), .y = @floatFromInt(mouse.row) }, pressed);
+            },
+            else => {
+                rerender_ui = false;
+            },
         }
 
         if (dom.root) |root| {
