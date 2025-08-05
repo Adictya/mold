@@ -48,6 +48,12 @@ pub fn tuiInit(
     allocator: std.mem.Allocator,
     callback: *const fn (AppEvent) void,
 ) !void {
+    if (g_state.tty) |tty| {
+        _ = tty;
+        std.log.debug("TTY already initialized", .{});
+        return;
+    }
+
     g_state.event_callback = callback;
 
     // Initialize TTY and Vaxis
@@ -70,7 +76,7 @@ pub fn tuiInit(
     renderer.display_width = try vaxis.DisplayWidth.init(allocator);
     cl.setMeasureTextFunction(void, {}, renderer.consoleMeasureText);
 
-    // try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
+    try g_state.vx.?.enterAltScreen(g_state.tty.?.anyWriter());
 
     try g_state.vx.?.setMouseMode(g_state.tty.?.anyWriter(), true);
 
@@ -117,7 +123,7 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     g_state.event_loop.?.stop();
     g_state.running.store(false, .monotonic);
 
-    // g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
+    g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
 
     g_state.vx.?.deinit(allocator, g_state.tty.?.anyWriter());
     g_state.tty.?.deinit();
@@ -136,13 +142,16 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
 
 pub fn componentClickHandler(_: cl.ElementId, pd: cl.PointerData, user_data: *const Component) void {
     const comp: *const Component = @ptrCast(@alignCast(user_data));
-    log.debug("CLAY: Click on {s} state:{s}", .{ comp.string_id, @tagName(pd.state) });
     const mouse_event = AppEvent{ .mouse = .{
         .id = comp.id.id,
     } };
+    std.log.debug("{s} component {s}", .{ @tagName(pd.state), comp.string_id });
     switch (pd.state) {
-        .pressed, .pressed_this_frame => {
+        .pressed_this_frame => {
             g_state.event_callback.?(mouse_event);
+        },
+        .pressed => {
+            // g_state.event_callback.?(mouse_event);
         },
         else => {},
     }
@@ -154,7 +163,7 @@ pub fn renderDFS(
     const comp = node.component;
     const compPtr = comp;
     const compId = comp.id;
-    // log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
+    log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
     switch (comp.ctype) {
         .box => {
             var config = comp.view_props.toClay();
@@ -192,23 +201,6 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
         var rerender_ui = true;
 
         switch (event) {
-            .key_press => |key| {
-                var key_event = AppEvent{
-                    .key = .{
-                        .key = @intCast(key.codepoint),
-                        .mods = key.mods,
-                    },
-                };
-                if (key.text) |key_text| {
-                    key_event.key.text = key_text;
-                }
-                callback(key_event);
-
-                // if (key.matches('c', .{ .ctrl = true })) {
-                //     g_state.running.store(false, .monotonic);
-                //     break;
-                // }
-            },
             .winsize => |ws| {
                 g_state.render_mutex.lock();
                 defer g_state.render_mutex.unlock();
@@ -224,13 +216,27 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     .h = @floatFromInt(ws.rows),
                 });
             },
+            .key_press => |key| {
+                var key_event = AppEvent{
+                    .key = .{
+                        .key = @intCast(key.codepoint),
+                        .mods = key.mods,
+                    },
+                };
+                if (key.text) |key_text| {
+                    key_event.key.text = key_text;
+                }
+                callback(key_event);
+                continue;
+            },
             .mouse => |mouse| {
-                log.debug("Vaxis Mouse event: {}", .{mouse});
-                const pressed: bool = switch (mouse.button) {
+                var pressed: bool = switch (mouse.button) {
                     .left, .right, .middle => true,
                     else => false,
                 };
+				pressed = mouse.type == .press;
                 cl.setPointerState(.{ .x = @floatFromInt(mouse.col), .y = @floatFromInt(mouse.row) }, pressed);
+				continue;
             },
             else => {
                 rerender_ui = false;

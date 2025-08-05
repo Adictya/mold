@@ -18,5 +18,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest"
+  },
+  "dependencies": {
+    "winston": "^3.17.0"
   }
 }

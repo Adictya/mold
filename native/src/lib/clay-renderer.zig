@@ -363,6 +363,7 @@ pub fn clayTerminalRenderValidate(
                 const node = dom.nodeMap.get(comp.id.id) orelse continue;
                 const parent_node = node.parent orelse continue;
                 const parent_comp: *Component = parent_node.component;
+		if (parent_comp.width <= 0) continue;
                 var max_w: u16 = parent_comp.width - 1;
                 max_w -= parent_comp.view_props.padding.left;
                 max_w -= parent_comp.view_props.padding.right;

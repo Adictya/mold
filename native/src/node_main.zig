@@ -114,6 +114,22 @@ fn init(js: *napigen.JsContext, callback: napigen.napi_value) !void {
     try bridge.tuiInit(gpa.allocator(), eventCallback);
 }
 
+var div_count: u32 = 0;
+var span_count: u32 = 0;
+
+fn getNextElementId(allocator: std.mem.Allocator, element_type: []const u8) ![]u8 {
+    if (std.mem.eql(u8, element_type, "div")) {
+        div_count += 1;
+        return try std.fmt.allocPrint(allocator, "div_{d}", .{div_count});
+    } else if (std.mem.eql(u8, element_type, "span")) {
+        span_count += 1;
+        return try std.fmt.allocPrint(allocator, "span_{d}", .{span_count});
+    }
+
+    // Fallback for other types (shouldn't happen based on your requirements)
+    return try std.fmt.allocPrint(allocator, "{s}_1", .{element_type});
+}
+
 const createElementParams = struct {
     element_id: []const u8,
     text: bool = false,
@@ -132,15 +148,14 @@ fn createElement(
         gpa.allocator(),
     );
 
-    log.debug("[zig]: Creating element with tag: {s} => {}\n", .{ params.element_id, params });
-
     const component = try gpa.allocator().create(Component);
 
-    const text_copy = try gpa.allocator().allocSentinel(u8, params.element_id.len, 0);
-    @memcpy(text_copy, params.element_id);
+    const text_copy = try getNextElementId(gpa.allocator(), params.element_id);
+
+    log.debug("[zig]: Creating element with tag: {s} => {s}\n", .{ params.element_id, text_copy });
 
     component.* = Component{
-        .id = .ID(params.element_id),
+        .id = .ID(text_copy),
         .string_id = text_copy,
         .ctype = if (params.text) .text else .box,
         .text = if (params.text) params.element_id else "",
@@ -153,7 +168,7 @@ fn createElement(
 
     try dom.nodeMap.put(component.id.id, node);
 
-    if (dom.root == null and std.mem.eql(u8, params.element_id, "root-1")) {
+    if (dom.root == null and std.mem.eql(u8, params.element_id, "root")) {
         dom.root = node;
     }
 
@@ -175,9 +190,9 @@ fn replaceText(js: *napigen.JsContext, val: napigen.napi_value) anyerror!void {
         gpa.allocator(),
     );
 
-    log.debug("[zig]: Replacing text with tag: {} => {}\n", .{ params.element_id, params });
-
     const node = dom.nodeMap.get(params.element_id) orelse return;
+
+    log.debug("[zig]: Replacing text with tag: {s} => {}\n", .{ node.component.string_id, params });
 
     node.component.id = .ID(params.text);
     node.component.text = params.text;
@@ -226,15 +241,19 @@ fn setProperty(
 
     const id = params.element_id;
 
-    const node = dom.nodeMap.get(id) orelse return;
-
     const property: propertiesEnum = @enumFromInt(params.property);
 
-    log.debug("[zig]: Setting property <{}/> {s} \n", .{ params.element_id, @tagName(property) });
+    const node = dom.nodeMap.get(id) orelse return;
+
+    log.debug("[zig]: Setting property <{s}/> {s} \n", .{ node.component.string_id, @tagName(property) });
 
     switch (property) {
         .debug_id => {
-            log.debug("comopnentId: {} debug id: {s}", .{ params.element_id, simpleVal });
+            log.debug("comopnentId: {s} debug id: {s}", .{ node.component.string_id, simpleVal });
+            // Store debug_id in string_id since there's no debug_id field
+            const copied_id = gpa.allocator().dupe(u8, simpleVal) catch unreachable;
+            // We'll use string_id instead since debug_id doesn't exist
+            node.component.string_id = copied_id;
             return;
         },
         .position => {
@@ -370,10 +389,10 @@ const insertNodeParams = struct {
 fn insertNode(params: insertNodeParams) !void {
     bridge.g_state.render_mutex.lock();
     defer bridge.g_state.render_mutex.unlock();
-    log.debug("[zig]: Inserting node with tag: {} => {}\n", .{ params.node, params });
-
     const parent = dom.nodeMap.get(params.parent) orelse return;
     const node = dom.nodeMap.get(params.node) orelse return;
+
+    log.debug("[zig]: Inserting node with tag: {s} => {}\n", .{ node.component.string_id, params });
     const anchor = if (params.anchor) |a| dom.nodeMap.get(a) else null;
 
     dom.insertNode(parent, node, anchor);
@@ -386,8 +405,8 @@ const isTextNodeParams = struct {
 };
 
 fn isTextNode(params: isTextNodeParams) !bool {
-    log.debug("isTextNode: {}\n", .{params.node});
     const node = dom.nodeMap.get(params.node) orelse return false;
+    log.debug("isTextNode: {s}\n", .{node.component.string_id});
 
     return node.component.ctype == .text;
 }
@@ -400,11 +419,16 @@ const removeNodeParams = struct {
 fn removeNode(params: removeNodeParams) !void {
     bridge.g_state.render_mutex.lock();
     defer bridge.g_state.render_mutex.unlock();
-    log.debug("removeNode: {}\n", .{params.node});
     const parent = dom.nodeMap.get(params.parent) orelse return;
     const node = dom.nodeMap.get(params.node) orelse return;
+    log.debug("removeNode: {s}\n", .{node.component.string_id});
 
     dom.removeNode(parent, node);
+
+    // var next_node = node.first_child;
+    // while (next_node.next_sibling) |sibling| {
+    //     next_node = sibling.next_sibling orelse break;
+    // }
 
     try bridge.rerender();
 }
@@ -422,8 +446,8 @@ const getRelatedNodesParams = struct {
 };
 
 fn getRelatedNodes(params: getRelatedNodesParams) !?u32 {
-    std.debug.print("getRelatedNodes: {} rel:{}\n", .{ params.node, params.relationship });
     const node = dom.nodeMap.get(params.node) orelse return null;
+    log.debug("getRelatedNodes: {s} rel:{}\n", .{ node.component.string_id, params.relationship });
 
     if (params.relationship > @intFromEnum(relationShip.first_child)) {
         return null;

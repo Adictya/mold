@@ -4,6 +4,9 @@ import solid from "vite-plugin-solid";
 export default defineConfig({
   clearScreen: false,
   logLevel: "silent",
+	optimizeDeps: {
+		noDiscovery: true,
+	},
   server: {
     hmr: true,
   },
@@ -13,6 +16,7 @@ export default defineConfig({
         moduleName: "@mold/core",
         generate: "universal",
       },
+      ssr: false,
     }),
   ],
 });

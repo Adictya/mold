@@ -5,7 +5,7 @@
   "type": "module",
   "module": "index.tsx",
   "scripts": {
-    "dev": "bun run ./build-script/build.ts",
+    "dev": "VITE_NODE_DEBUG_DUMP=true bun run ./build-script/build.ts",
     "build": "bun run build.ts",
     "start": "bun run ./dist/index.js",
     "preview": "vite preview"
@@ -14,7 +14,8 @@
     "@mold/core": "workspace:*",
     "patch-package": "^8.0.0",
     "solid-js": "^1.9.7",
-    "vite-node": "^3.2.4"
+    "vite-node": "^3.2.4",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.28.0",

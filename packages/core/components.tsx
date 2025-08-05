@@ -1,3 +1,4 @@
+/* @refresh skip */
 import { children as resolveChildren } from "solid-js";
 
 export enum BorderType {
