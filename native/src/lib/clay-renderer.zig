@@ -232,9 +232,9 @@ fn consoleDrawRectangle(
                 },
             );
 
-            const is_top = if (bounding_box.height <= 1) false else y == top_start;
+            const is_top = if (bounding_box.height <= 1) true else y == top_start;
             const is_bottom = if (bounding_box.height <= 1) false else y == top_end - 1;
-            const is_left = if (bounding_box.width <= 1) false else x == left_start;
+            const is_left = if (bounding_box.width <= 1) true else x == left_start;
             const is_right = if (bounding_box.width <= 1) false else x == left_end - 1;
 
             const on_border = is_top or is_bottom or is_left or is_right;
@@ -363,10 +363,11 @@ pub fn clayTerminalRenderValidate(
                 const node = dom.nodeMap.get(comp.id.id) orelse continue;
                 const parent_node = node.parent orelse continue;
                 const parent_comp: *Component = parent_node.component;
-		if (parent_comp.width <= 0) continue;
+                if (parent_comp.width <= 0) continue;
                 var max_w: u16 = parent_comp.width - 1;
-                max_w -= parent_comp.view_props.padding.left;
-                max_w -= parent_comp.view_props.padding.right;
+                const padding = parent_comp.view_props.padding.applyBorder(parent_comp.view_props.border.where).toClay();
+                max_w -= padding.left;
+                max_w -= padding.right;
 
                 const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
                 const text_w = win.gwidth(text);
@@ -374,17 +375,17 @@ pub fn clayTerminalRenderValidate(
                 // std.log.debug("=> {s} width: {} full text len{} Bounding box width: {}, breaks: {}", .{
                 //     text,
                 //     text_w,
-                //     comp.text.len,
+                //     parent_comp.text.len,
                 //     max_w,
                 //     comp.breaks,
                 // });
 
+                std.log.debug("text: {s} text_w: {} max_w: {}", .{ comp.text, text_w, max_w});
                 if (parent_comp.view_props.scroll.horizontal) {
                     // std.log.debug("Horizontal scroll", .{});
                     continue;
                 }
-
-                if (text_w > parent_comp.width) {
+                if (text_w > max_w) {
                     comp.text = try breakLongWords(allocator, comp.text, max_w);
                     std.log.debug("Breaking text: {s}", .{comp.text});
                     return true;
@@ -426,7 +427,7 @@ pub fn clayTerminalRender(
         switch (render_command.command_type) {
             .text => {
                 const comp: *Component = @ptrCast(@alignCast(render_command.user_data));
-                // std.log.debug("Recieved component:\n{}\n</{s}>", .{ comp, comp.string_id });
+                // std.log.debug("Recieved text:\n{s}\n</{s}>", .{ comp.text, comp.string_id });
                 const config = render_command.render_data.text;
                 consoleDrawText(
                     win,

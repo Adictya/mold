@@ -163,7 +163,7 @@ pub fn renderDFS(
     const comp = node.component;
     const compPtr = comp;
     const compId = comp.id;
-    log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
+    // log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
     switch (comp.ctype) {
         .box => {
             var config = comp.view_props.toClay();
@@ -234,9 +234,9 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     .left, .right, .middle => true,
                     else => false,
                 };
-				pressed = mouse.type == .press;
+                pressed = mouse.type == .press;
                 cl.setPointerState(.{ .x = @floatFromInt(mouse.col), .y = @floatFromInt(mouse.row) }, pressed);
-				continue;
+                continue;
             },
             else => {
                 rerender_ui = false;
@@ -246,15 +246,15 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
         if (dom.root) |root| {
             if (root.first_child) |first_child| {
                 var iter_depth: u8 = 0;
+                const window = g_state.vx.?.window();
+                g_state.render_mutex.lock();
+                defer g_state.render_mutex.unlock();
+
+                var commands: []cl.RenderCommand = &.{};
                 while (iter_depth < 2) {
-                    const window = g_state.vx.?.window();
-
-                    g_state.render_mutex.lock();
-                    defer g_state.render_mutex.unlock();
-
                     cl.beginLayout();
                     renderDFS(first_child) catch {};
-                    const commands = cl.endLayout();
+                    commands = cl.endLayout();
                     const wrapNeeded = renderer.clayTerminalRenderValidate(
                         allocator,
                         @constCast(&window),
@@ -269,23 +269,23 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                         iter_depth += 1;
                         continue;
                     }
-
-                    window.clear();
-
-                    renderer.clayTerminalRender(
-                        @constCast(&window),
-                        commands,
-                        @intCast(window.width),
-                        @intCast(window.height),
-                    ) catch |err| {
-                        log.err("Render error: {}", .{err});
-                    };
-
-                    g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
-                        log.err("Render error: {}", .{err});
-                    };
                     break;
                 }
+                log.debug("Rendering {}", .{iter_depth});
+                window.clear();
+
+                renderer.clayTerminalRender(
+                    @constCast(&window),
+                    commands,
+                    @intCast(window.width),
+                    @intCast(window.height),
+                ) catch |err| {
+                    log.err("Render error: {}", .{err});
+                };
+
+                g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
+                    log.err("Render error: {}", .{err});
+                };
             }
         }
     }

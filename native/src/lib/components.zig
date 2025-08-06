@@ -36,12 +36,14 @@ pub const Position = struct {
     parent_id: ?cl.ElementId = null,
     z_index: i16 = 0,
     attach_points: cl.FloatingAttachPoints = .{ .element = .left_top, .parent = .left_top },
+    attach_to: cl.FloatingAttachToElement = .to_none,
 
     pub fn toClay(self: *const Position) cl.FloatingElementConfig {
         return .{
             .offset = self.offset,
             .z_index = self.z_index,
             .attach_points = self.attach_points,
+            .attach_to = self.attach_to,
         };
     }
 };
@@ -132,12 +134,42 @@ pub const Border = struct {
 
 pub const Scroll = cl.ClipElementConfig;
 
+pub const Padding = extern struct {
+    /// Padding on left side
+    left: i16 = 0,
+    /// Padding on right side
+    right: i16 = 0,
+    /// Padding on top side
+    top: i16 = 0,
+    /// Padding on bottom side
+    bottom: i16 = 0,
+
+    pub fn toClay(self: *const Padding) cl.Padding {
+        return .{
+            .left = if (self.left < 0) 0 else @intCast(self.left),
+            .right = if (self.right < 0) 0 else @intCast(self.right),
+            .top = if (self.top < 0) 0 else @intCast(self.top),
+            .bottom = if (self.bottom < 0) 0 else @intCast(self.bottom),
+        };
+    }
+
+    pub fn applyBorder(self: *const Padding, border: BorderWhere) Padding {
+        var copy = self.*;
+        copy.left += @intFromBool(border.left);
+        copy.right += @intFromBool(border.right);
+        copy.top += @intFromBool(border.top);
+        copy.bottom += @intFromBool(border.bottom);
+
+        return copy;
+    }
+};
+
 pub const ViewProps = struct {
     position: Position = .{},
     sizing: Sizing = .{},
-    padding: cl.Padding = .{},
+    padding: Padding = .{},
     child_layout: ChildLayout = .{},
-    scroll: cl.ClipElementConfig = .{ .horizontal = true, .vertical = true },
+    scroll: cl.ClipElementConfig = .{ .horizontal = false, .vertical = false },
     style: Style = .{},
     border: Border = .{},
     clickable: bool = false,
@@ -147,7 +179,7 @@ pub const ViewProps = struct {
         return .{
             .layout = .{
                 .sizing = self.sizing.toClay(),
-                .padding = self.padding,
+                .padding = self.padding.applyBorder(self.border.where).toClay(),
                 .child_gap = self.child_layout.child_gap,
                 .child_alignment = self.child_layout.child_alignment,
                 .direction = self.child_layout.direction,

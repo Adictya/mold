@@ -1,5 +1,5 @@
 /* @refresh skip */
-import { children as resolveChildren } from "solid-js";
+import { mergeProps, children as resolveChildren, splitProps } from "solid-js";
 
 export enum BorderType {
   SingleRounded = 0,
@@ -58,6 +58,13 @@ export enum UnderlineType {
   Dashed = 5,
 }
 
+export enum PositionAttachTo {
+  None = 0,
+  Parent = 1,
+  ElementWithId = 2,
+  Root = 3,
+}
+
 type Color = { hex: string };
 
 type ViewProps = {
@@ -66,6 +73,7 @@ type ViewProps = {
     parentId?: string;
     z_index?: number;
     attach_points?: { element?: AttachPoints; parent?: AttachPoints };
+		attach_to?: PositionAttachTo;
   };
   sizing?: {
     w?: {
@@ -157,9 +165,22 @@ type TextProps = {
   debug_id?: string;
 };
 
-export const Text = ({ children, debug_id, ...props }: TextProps) => {
-  const resolved = resolveChildren(() => children);
+export const Text = (props: TextProps) => {
+  const [children, debug_id , otherProps] = splitProps(props, ["children"], ["debug_id"]);
+  const resolved = resolveChildren(() => props.children);
   return (
-    <span text={resolved()} textStyle={{ ...props }} debug_id={debug_id} />
+    <span text={resolved()} textStyle={{
+			fg_color: props.fg_color,
+			bg_color: props.bg_color,
+			ul_color: props.ul_color,
+			ul_style: props.ul_style,
+			bold: props.bold,
+			dim: props.dim,
+			italic: props.italic,
+			blink: props.blink,
+			reverse: props.reverse,
+			invisible: props.invisible,
+			strikethrough: props.strikethrough,
+		}} debug_id={debug_id} />
   );
 };

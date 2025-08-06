@@ -26,13 +26,15 @@ pub fn insertNode(parent: *DomNode, node: *DomNode, anchor: ?*DomNode) void {
     log.debug("Inserting node {s} into parent {s}", .{ node.component.string_id, parent.component.string_id });
 
     if (anchor) |a| {
+		// Insert before anchor
         log.debug("Using anchor {s}", .{a.component.string_id});
-        node.previous_sibling = a;
-        node.next_sibling = a.next_sibling;
-        if (a.next_sibling) |next| {
-            next.previous_sibling = node;
+        node.next_sibling = a;
+        if (a.previous_sibling) |previous| {
+            previous.next_sibling = node;
+        } else {
+            parent.first_child = node;
         }
-        a.next_sibling = node;
+        a.previous_sibling = node;
     } else {
         // Insert at the end of the children list
         if (parent.first_child) |first| {

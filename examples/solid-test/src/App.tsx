@@ -1,9 +1,12 @@
 /* @refresh reload */
 import WindowsUi from "./Windows98";
+import { WindowsProvider } from "./WindowsContext";
 
 function App() {
   return (
-		<WindowsUi />
+    <WindowsProvider>
+      <WindowsUi />
+    </WindowsProvider>
   );
 }
 

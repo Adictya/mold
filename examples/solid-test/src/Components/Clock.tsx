@@ -11,6 +11,7 @@ import MoldCore, {
   View,
 } from "@mold/core";
 import { createSignal, onCleanup } from "solid-js";
+import Colors from "../styleSheet";
 
 function getCurrentTime() {
   const now = new Date();
@@ -36,32 +37,56 @@ export default function Clock() {
 
   return (
     <View
+      debug_id="clock-container"
       style={{
-        bg_color: { hex: "#c0c0c0" },
+        bg_color: { hex: Colors.desktopBackground },
       }}
-      border={{
-        where: {
-          left: true,
-        },
-        fg_color: { hex: "#6d6d6d" },
-        type: BorderType.HugVerticalFlipped,
-      }}
-      padding={{
-        left: 1,
+      child_layout={{
+        direction: LayoutDirection.topToBottom,
       }}
     >
-      <Text
-        fg_color={{ hex: "#222" }}
-        bg_color={{ hex: "#c0c0c0" }}
-        bold
-        ul_style={UnderlineType.Double}
-        ul_color={{ hex: "#dfdfdf" }}
+      <View
+        debug_id="clock-top-border"
+        sizing={{
+          h: { minmax: { min: 1, max: 1 } },
+          w: { type: SizingType.Grow },
+        }}
+        style={{
+          bg_color: { hex: Colors.desktopBackground },
+        }}
+        border={{
+          where: {
+            top: true,
+          },
+          fg_color: { hex: Colors.darkBorder },
+          type: BorderType.HugHorizontalFlipped,
+        }}
+      />
+      <View
+        style={{
+          bg_color: { hex: Colors.taskbarBackground },
+        }}
+        border={{
+          where: {
+            left: true,
+          },
+          fg_color: { hex: Colors.mediumBorder },
+          type: BorderType.HugVerticalFlipped,
+        }}
       >
-        ⏲ {time()}
-      </Text>
-      <Text fg_color={{ hex: "#dfdfdf" }} bg_color={{ hex: "#c0c0c0" }} bold>
-        ▐
-      </Text>
+        <Text
+          fg_color={{ hex: Colors.text }}
+          bg_color={{ hex: Colors.taskbarBackground }}
+          bold
+          ul_style={UnderlineType.Double}
+          ul_color={{ hex: Colors.lightBorder }}
+        >
+          ⏲ {time()}
+        </Text>
+        <Text fg_color={{ hex: "#dfdfdf" }} bg_color={{ hex: "#c0c0c0" }} bold>
+          ▐
+        </Text>
+      </View>
     </View>
   );
 }

@@ -168,7 +168,7 @@ fn createElement(
 
     try dom.nodeMap.put(component.id.id, node);
 
-    if (dom.root == null and std.mem.eql(u8, params.element_id, "root")) {
+    if (std.mem.eql(u8, params.element_id, "root")) {
         dom.root = node;
     }
 
@@ -279,9 +279,9 @@ fn setProperty(
             node.component.view_props.sizing = value;
         },
         .padding => {
-            var value: cl.Padding = .{};
+            var value: Component.Padding = .{};
             _ = try jsoParser.jsObjectToStruct(
-                cl.Padding,
+                Component.Padding,
                 js,
                 complexVal,
                 &value,

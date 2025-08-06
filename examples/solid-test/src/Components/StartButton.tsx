@@ -1,60 +1,98 @@
 import {
   BorderType,
   LayoutDirection,
+  SizingType,
   Text,
   UnderlineType,
   View,
+  Show,
 } from "@mold/core";
-import { createSignal } from "solid-js";
+import { createSignal, useContext } from "solid-js";
 import Colors from "../styleSheet";
+import StartMenu from "./StartMenu";
+import { WindowsContext } from "../WindowsContext";
 
 const lb = Colors.lightBorder;
 const db = Colors.darkBorder;
 
 export default function StartButton() {
-  const [active, setActive] = createSignal(false);
+  const { startMenuOpen: active, setStartMenuOpen: setActive } =
+    useContext(WindowsContext);
+
   return (
     <View
       debug_id="start-button-container"
       style={{
-        bg_color: { hex: "#c0c0c0" },
+        bg_color: { hex: active() ? "#c0c0c0" : "#808080" },
       }}
       child_layout={{
         direction: LayoutDirection.topToBottom,
       }}
       onClick={() => {
-        setActive((a) => !a);
+        setActive((a: boolean) => !a);
       }}
     >
+      <Show when={active()}>
+        <StartMenu />
+      </Show>
       <View
-        debug_id="start-button"
+        debug_id="start-button-top-border"
+        sizing={{
+          h: { minmax: { min: 1, max: 1 } },
+          w: { type: SizingType.Grow },
+        }}
         style={{
-          bg_color: { hex: "#c0c0c0" },
+          bg_color: { hex: Colors.desktopBackground },
         }}
         border={{
           where: {
-            left: true,
+            top: true,
           },
           fg_color: { hex: active() ? db : lb },
-          type: BorderType.HugVerticalFlipped,
+          type: BorderType.HugHorizontalFlipped,
         }}
-        padding={{
-          left: 1,
+      />
+      <View
+        debug_id="start-button"
+        style={{
+          bg_color: { hex: Colors.taskbarBackground },
         }}
       >
         <Text
-          debug_id="start-text"
-          bg_color={{ hex: "#c0c0c0" }}
-          fg_color={{ hex: "#222" }}
+          debug_id="start-text-left-border"
+          bg_color={{
+            hex: active()
+              ? Colors.taskbarBackgroundDark
+              : Colors.taskbarBackground,
+          }}
+          fg_color={{ hex: active() ? Colors.mediumBorder : lb }}
           bold
           ul_style={UnderlineType.Double}
-          ul_color={{ hex: active() ? lb : db }}
+          ul_color={{ hex: active() ? lb : Colors.mediumBorder }}
         >
-          ⛴︎ Start2
+          ▌
+        </Text>
+        <Text
+          debug_id="start-text"
+          bg_color={{
+            hex: active()
+              ? Colors.taskbarBackgroundDark
+              : Colors.taskbarBackground,
+          }}
+          fg_color={{ hex: Colors.text }}
+          ul_style={UnderlineType.Double}
+          ul_color={{ hex: active() ? lb : db }}
+          bold
+        >
+          ⛴︎ Start
         </Text>
         <Text
           debug_id="start-text-border"
-          bg_color={{ hex: "#c0c0c0" }}
+          bg_color={{
+            hex: active()
+              ? Colors.taskbarBackgroundDark
+              : Colors.taskbarBackground,
+          }}
           fg_color={{ hex: active() ? lb : db }}
           bold
           ul_style={UnderlineType.Double}
