@@ -23,6 +23,9 @@ pub const KeyEvent = struct {
 
 pub const MouseEvent = struct {
     id: u32,
+    vaxis_mouse: vaxis.Mouse,
+    clay_mouse: cl.PointerData,
+    bounding_box: cl.BoundingBox,
 };
 
 pub const AppEvent = union(enum) {
@@ -140,25 +143,31 @@ pub fn tuiShutdown(allocator: std.mem.Allocator) void {
     std.process.exit(0);
 }
 
-pub fn componentClickHandler(_: cl.ElementId, pd: cl.PointerData, user_data: *const Component) void {
-    const comp: *const Component = @ptrCast(@alignCast(user_data));
-    const mouse_event = AppEvent{ .mouse = .{
-        .id = comp.id.id,
-    } };
-    std.log.debug("{s} component {s}", .{ @tagName(pd.state), comp.string_id });
-    switch (pd.state) {
-        .pressed_this_frame => {
-            g_state.event_callback.?(mouse_event);
-        },
-        .pressed => {
-            // g_state.event_callback.?(mouse_event);
-        },
-        else => {},
+pub fn componentClickHandler(id: cl.ElementId, pd: cl.PointerData, user_data: *vaxis.Mouse) void {
+    const vaxis_mouse_event: *const vaxis.Mouse = @ptrCast(@alignCast(user_data));
+    const element_data = cl.getElementData(id);
+    if (element_data.found) {
+        const mouse_event = AppEvent{ .mouse = .{
+            .id = id.id,
+            .vaxis_mouse = vaxis_mouse_event.*,
+            .clay_mouse = pd,
+            .bounding_box = element_data.bounding_box,
+        } };
+        g_state.event_callback.?(mouse_event);
+        // switch (pd.state) {
+        //     .pressed_this_frame => {
+        //     },
+        //     .pressed => {
+        //         // g_state.event_callback.?(mouse_event);
+        //     },
+        //     else => {},
+        // }
     }
 }
 
 pub fn renderDFS(
     node: *dom.DomNode,
+    vaxis_mouse: *vaxis.Mouse,
 ) !void {
     const comp = node.component;
     const compPtr = comp;
@@ -173,10 +182,10 @@ pub fn renderDFS(
             config.background_color = .{ 255, 255, 255, 255 };
             ui(config)({
                 if (comp.view_props.clickable) {
-                    cl.onHover(*const Component, compPtr, componentClickHandler);
+                    cl.onHover(*vaxis.Mouse, vaxis_mouse, componentClickHandler);
                 }
                 if (node.first_child) |children| {
-                    try renderDFS(children);
+                    try renderDFS(children, vaxis_mouse);
                 }
             });
         },
@@ -187,13 +196,21 @@ pub fn renderDFS(
         },
     }
     if (node.next_sibling) |sibling| {
-        try renderDFS(sibling);
+        try renderDFS(sibling, vaxis_mouse);
     }
 }
 
 fn tuiEventLoop(allocator: std.mem.Allocator) void {
     const loop = g_state.event_loop.?;
     const callback = g_state.event_callback.?;
+
+    var vaxis_mouse: vaxis.Mouse = .{
+        .col = 0,
+        .row = 0,
+        .mods = .{},
+        .button = .left,
+        .type = .release,
+    };
 
     while (g_state.running.load(.monotonic)) {
         const event = loop.nextEvent();
@@ -230,6 +247,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 continue;
             },
             .mouse => |mouse| {
+                vaxis_mouse = mouse;
                 var pressed: bool = switch (mouse.button) {
                     .left, .right, .middle => true,
                     else => false,
@@ -243,7 +261,6 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     .wheel_right => .{ .x = 1, .y = 0 },
                     else => .{ .x = 0, .y = 0 },
                 };
-                std.log.debug("Scroll delta: {}", .{scroll_delta});
                 if (scroll_delta.x != 0 or scroll_delta.y != 0) {
                     cl.updateScrollContainers(false, scroll_delta, 1);
                 } else {
@@ -265,7 +282,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 var commands: []cl.RenderCommand = &.{};
                 while (iter_depth < 2) {
                     cl.beginLayout();
-                    renderDFS(first_child) catch {};
+                    renderDFS(first_child, &vaxis_mouse) catch {};
                     commands = cl.endLayout();
                     const wrapNeeded = renderer.clayTerminalRenderValidate(
                         allocator,
