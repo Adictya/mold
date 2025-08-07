@@ -79,7 +79,7 @@ const MenuBarButton = ({
 export default function Notepad() {
   const { setNotepadOpen } = useContext(WindowsContext);
   const [text, setText] = createSignal(
-    "This is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog",
+    "This is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog his is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog",
   );
   addListener((event) => {
     const { text, key, mods } = event;
@@ -94,7 +94,7 @@ export default function Notepad() {
     <View
       debug_id="Notepad-container"
       sizing={{
-        h: { minmax: { min: 20, max: 20 } },
+        h: { minmax: { min: 8, max: 8 } },
         w: { minmax: { min: 60, max: 60 } },
       }}
       position={{
@@ -275,6 +275,9 @@ export default function Notepad() {
               fg_color: { hex: Colors.mediumBorder },
               type: BorderType.HugVerticalFlipped,
             }}
+						scroll={{
+							vertical: true,
+						}}
           >
             <Text fg_color={{ hex: Colors.text }} bg_color={{ hex: "#fff" }}>
               {text()}

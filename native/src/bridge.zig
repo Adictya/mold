@@ -166,11 +166,12 @@ pub fn renderDFS(
     // log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
     switch (comp.ctype) {
         .box => {
+            const ui = cl.UI();
             var config = comp.view_props.toClay();
             config.id = compId;
             config.user_data = @constCast(compPtr);
             config.background_color = .{ 255, 255, 255, 255 };
-            cl.UI()(config)({
+            ui(config)({
                 if (comp.view_props.clickable) {
                     cl.onHover(*const Component, compPtr, componentClickHandler);
                 }
@@ -182,7 +183,6 @@ pub fn renderDFS(
         .text => {
             var config = comp.text_props.toClay();
             config.user_data = @constCast(compPtr);
-            // log.debug("Rendering text: {s}", .{comp.text});
             cl.text(comp.text, config);
         },
     }
@@ -234,9 +234,21 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     .left, .right, .middle => true,
                     else => false,
                 };
-                pressed = mouse.type == .press;
+                pressed = mouse.type == .press and pressed;
                 cl.setPointerState(.{ .x = @floatFromInt(mouse.col), .y = @floatFromInt(mouse.row) }, pressed);
-                continue;
+                const scroll_delta: cl.Vector2 = switch (mouse.button) {
+                    .wheel_up => .{ .x = 0, .y = 1 },
+                    .wheel_down => .{ .x = 0, .y = -1 },
+                    .wheel_left => .{ .x = -1, .y = 0 },
+                    .wheel_right => .{ .x = 1, .y = 0 },
+                    else => .{ .x = 0, .y = 0 },
+                };
+                std.log.debug("Scroll delta: {}", .{scroll_delta});
+                if (scroll_delta.x != 0 or scroll_delta.y != 0) {
+                    cl.updateScrollContainers(false, scroll_delta, 1);
+                } else {
+                    continue;
+                }
             },
             else => {
                 rerender_ui = false;

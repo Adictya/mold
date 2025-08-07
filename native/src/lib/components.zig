@@ -187,7 +187,12 @@ pub const ViewProps = struct {
             .background_color = self.style.bg_color.toClay(),
             .floating = self.position.toClay(),
             .border = self.border.toClay(),
-            .clip = self.scroll,
+            .clip = .{
+                .horizontal = self.scroll.horizontal,
+                .vertical = self.scroll.vertical,
+                // .child_offset = self.scroll.child_offset,
+                .child_offset = if (self.scroll.horizontal or self.scroll.vertical) cl.getScrollOffset() else .{ .x = 0, .y = 0 },
+            },
         };
     }
 };
@@ -214,6 +219,8 @@ pub const TextProps = struct {
     reverse: bool = false,
     invisible: bool = false,
     strikethrough: bool = false,
+
+    user_input: bool = false,
 
     wrap_mode: cl.TextElementConfigWrapMode = .words,
     alignment: cl.TextAlignment = .left,

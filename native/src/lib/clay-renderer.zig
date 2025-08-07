@@ -70,6 +70,15 @@ fn consoleDrawText(
     config: cl.TextRenderData,
     scissor_box: BoundingBox,
 ) void {
+    if (bounding_box.y + 1 > scissor_box.y + scissor_box.height or bounding_box.y < scissor_box.y) {
+        return;
+    }
+
+	// TODO: Might cause issues with horizontal scrolling
+    if (bounding_box.x + 1 > scissor_box.x + scissor_box.width or bounding_box.x < scissor_box.x) {
+        return;
+    }
+
     const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
 
     var col = bounding_box.x;
@@ -380,12 +389,12 @@ pub fn clayTerminalRenderValidate(
                 //     comp.breaks,
                 // });
 
-                std.log.debug("text: {s} text_w: {} max_w: {}", .{ comp.text, text_w, max_w});
+                std.log.debug("text: {s} text_w: {} max_w: {}", .{ comp.text, text_w, max_w });
                 if (parent_comp.view_props.scroll.horizontal) {
                     // std.log.debug("Horizontal scroll", .{});
                     continue;
                 }
-                if (text_w > max_w) {
+                if (text_w > max_w + 1) {
                     comp.text = try breakLongWords(allocator, comp.text, max_w);
                     std.log.debug("Breaking text: {s}", .{comp.text});
                     return true;
