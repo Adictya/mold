@@ -11,13 +11,14 @@ import MoldCore, {
   UnderlineType,
   View,
   Show,
+  log,
 } from "@mold/core";
 import Clock from "./Components/Clock";
 import StartButton from "./Components/StartButton";
 import Colors from "./styleSheet";
 import Notepad from "./Components/Notepad";
 import { WindowsContext, WindowsProvider } from "./WindowsContext";
-import { useContext } from "solid-js";
+import { createSignal, useContext } from "solid-js";
 
 function App() {
   const { notepadOpen, setNotepadOpen, setStartMenuOpen } =

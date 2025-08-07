@@ -9,11 +9,81 @@ log("Module re-initialized for some reason");
 
 // --- HMR State Management (Global Approach) ---
 
+// Type definitions for mouse events
+type Vector2 = {
+  x: number;
+  y: number;
+};
+
+type BoundingBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+// Enum mappings with string values
+const PointerDataInteractionState = {
+  0: "pressed_this_frame",
+  1: "pressed",
+  2: "released_this_frame",
+  3: "released"
+} as const;
+
+const VaxisMouseButton = {
+  0: "left",
+  1: "middle",
+  2: "right",
+  3: "none",
+  64: "wheel_up",
+  65: "wheel_down",
+  66: "wheel_right",
+  67: "wheel_left",
+  128: "button_8",
+  129: "button_9",
+  130: "button_10",
+  131: "button_11"
+} as const;
+
+const VaxisMouseType = {
+  0: "press",
+  1: "release",
+  2: "motion",
+  3: "drag"
+} as const;
+
+type PointerData = {
+  position: Vector2;
+  state: keyof typeof PointerDataInteractionState;
+  stateString: typeof PointerDataInteractionState[keyof typeof PointerDataInteractionState];
+};
+
+type VaxisMouseModifiers = {
+  shift: boolean;
+  alt: boolean;
+  ctrl: boolean;
+};
+
+type VaxisMouse = {
+  col: number;
+  row: number;
+  xoffset: number;
+  yoffset: number;
+  button: keyof typeof VaxisMouseButton;
+  buttonString: typeof VaxisMouseButton[keyof typeof VaxisMouseButton];
+  mods: VaxisMouseModifiers;
+  type: keyof typeof VaxisMouseType;
+  typeString: typeof VaxisMouseType[keyof typeof VaxisMouseType];
+};
+
+export type MouseEventHandler = (clayMouse: PointerData, vaxisMouse: VaxisMouse, boundingBox: BoundingBox) => void;
+
 type listener = (event: any) => void;
 
 type RendererState = {
   listeners: listener[];
   onClickListeners: Record<string, () => void>;
+  onMouseListeners: Record<string, MouseEventHandler>;
   initialized: boolean;
 };
 
@@ -28,6 +98,7 @@ const getGlobalState = (): RendererState => {
     globalThis[MOLD_RENDERER_STATE_KEY] = {
       listeners: [],
       onClickListeners: {},
+      onMouseListeners: {},
       initialized: false,
     };
   }
@@ -37,7 +108,7 @@ const getGlobalState = (): RendererState => {
 const state = getGlobalState();
 
 // Use the persistent state objects throughout the module.
-const { listeners, onClickListeners } = state;
+const { listeners, onClickListeners, onMouseListeners } = state;
 
 // --- End HMR State Management ---
 
@@ -59,6 +130,7 @@ const PropertiesEnum = Object.freeze({
   text: 10,
   debug_id: 11,
   onClick: 12,
+  onMouse: 12,
 });
 
 type DomNode = { id: number };
@@ -74,13 +146,30 @@ export const initialize = () => {
   }
 
   Core.init((eventType: bigint, eventData: any) => {
-    log("Event received:", { eventType, eventData });
+    // log("Event received:", { eventType, eventData });
     if (eventType === 1n) {
-      const { id } = eventData;
-      const eventId = `${id}`;
-      log("Click event received:", { eventId, onClickListeners });
-      if (eventId in onClickListeners) {
-        onClickListeners[eventId](eventData);
+      const { id, clay_mouse, vaxis_mouse, bounding_box } = eventData;
+      const elementId = `${id}`;
+      // log("Click event received:", { eventId: elementId, onClickListeners, clay_mouse });
+
+      if (onClickListeners[elementId] && clay_mouse?.state === 0) {
+        onClickListeners[elementId]();
+      }
+
+      if (onMouseListeners[elementId]) {
+        // Add string mappings to the mouse data
+        const enhancedClayMouse: PointerData = {
+          ...clay_mouse,
+          stateString: PointerDataInteractionState[clay_mouse.state as keyof typeof PointerDataInteractionState]
+        };
+
+        const enhancedVaxisMouse: VaxisMouse = {
+          ...vaxis_mouse,
+          buttonString: VaxisMouseButton[vaxis_mouse.button as keyof typeof VaxisMouseButton],
+          typeString: VaxisMouseType[vaxis_mouse.type as keyof typeof VaxisMouseType]
+        };
+
+        onMouseListeners[elementId](enhancedClayMouse, enhancedVaxisMouse, bounding_box);
       }
     } else {
       listeners.forEach((listener) => listener(eventData));
@@ -147,10 +236,14 @@ export const {
         complexValue = undefined;
       }
 
-      if (name === "onClick") {
+      if (name === "onClick" || name === "onMouse") {
         complexValue = true;
         // This now updates the globally-stored object.
-        onClickListeners[node.id] = value;
+					if (name === "onClick") {
+						onClickListeners[node.id] = value;
+					} else {
+					onMouseListeners[node.id] = value;
+				}
         log("Setting onClick", {
           id: node.id,
           totalListeners: Object.keys(onClickListeners).length,

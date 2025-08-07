@@ -7,7 +7,7 @@ import {
   View,
   Show,
 } from "@mold/core";
-import { createSignal, useContext } from "solid-js";
+import { useContext } from "solid-js";
 import Colors from "../styleSheet";
 import StartMenu from "./StartMenu";
 import { WindowsContext } from "../WindowsContext";

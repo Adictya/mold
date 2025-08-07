@@ -74,11 +74,12 @@ fn consoleDrawText(
         return;
     }
 
-	// TODO: Might cause issues with horizontal scrolling
+    // TODO: Might cause issues with horizontal scrolling
     if (bounding_box.x + 1 > scissor_box.x + scissor_box.width or bounding_box.x < scissor_box.x) {
         return;
     }
 
+    if (config.string_contents.length < 0) return;
     const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
 
     var col = bounding_box.x;
@@ -378,6 +379,7 @@ pub fn clayTerminalRenderValidate(
                 max_w -= padding.left;
                 max_w -= padding.right;
 
+                if (config.string_contents.length < 0) continue;
                 const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];
                 const text_w = win.gwidth(text);
 
@@ -389,7 +391,7 @@ pub fn clayTerminalRenderValidate(
                 //     comp.breaks,
                 // });
 
-                std.log.debug("text: {s} text_w: {} max_w: {}", .{ comp.text, text_w, max_w });
+                // std.log.debug("text: {s} text_w: {} max_w: {}", .{ comp.text, text_w, max_w });
                 if (parent_comp.view_props.scroll.horizontal) {
                     // std.log.debug("Horizontal scroll", .{});
                     continue;

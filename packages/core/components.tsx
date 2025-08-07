@@ -1,4 +1,5 @@
 /* @refresh skip */
+import type { MouseEventHandler } from "./solid";
 import { mergeProps, children as resolveChildren, splitProps } from "solid-js";
 
 export enum BorderType {
@@ -125,6 +126,7 @@ type ViewProps = {
   children?: any;
   debug_id?: string;
   onClick?: (event: any) => void;
+  onMouse?: MouseEventHandler;
 };
 
 export const View = (props: ViewProps) => {
@@ -141,6 +143,7 @@ export const View = (props: ViewProps) => {
       border={props.border}
       debug_id={props.debug_id}
       onClick={props.onClick}
+	  	onMouse={props.onMouse}
     >
       {resolved()}
     </div>

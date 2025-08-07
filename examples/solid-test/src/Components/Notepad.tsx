@@ -98,11 +98,11 @@ export default function Notepad() {
         w: { minmax: { min: 60, max: 60 } },
       }}
       position={{
-        offset: { x: 0, y: 0 },
+        offset: { x: position().x, y: position().y },
         attach_to: PositionAttachTo.Root,
         attach_points: {
-          parent: AttachPoints.CenterCenter,
-          element: AttachPoints.CenterCenter,
+          parent: AttachPoints.LeftTop,
+          element: AttachPoints.LeftTop,
         },
       }}
       child_layout={{
@@ -275,9 +275,9 @@ export default function Notepad() {
               fg_color: { hex: Colors.mediumBorder },
               type: BorderType.HugVerticalFlipped,
             }}
-						scroll={{
-							vertical: true,
-						}}
+            scroll={{
+              vertical: true,
+            }}
           >
             <Text fg_color={{ hex: Colors.text }} bg_color={{ hex: "#fff" }}>
               {text()}
