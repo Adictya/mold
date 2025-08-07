@@ -8,6 +8,7 @@ import {
   Text,
   UnderlineType,
   View,
+  useDraggable,
 } from "@mold/core";
 
 import { createSignal, useContext } from "solid-js";
@@ -81,8 +82,11 @@ export default function Notepad() {
   const [text, setText] = createSignal(
     "This is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog his is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog",
   );
+
+  const draggable = useDraggable("notepad", { x: 10, y: 5 });
+
   addListener((event) => {
-    const { text, key, mods } = event;
+    const { text, key } = event;
     // backspace
     if (key == 127) {
       setText((t) => t.slice(0, -1));
@@ -98,7 +102,7 @@ export default function Notepad() {
         w: { minmax: { min: 60, max: 60 } },
       }}
       position={{
-        offset: { x: position().x, y: position().y },
+        offset: { x: draggable.position().x, y: draggable.position().y },
         attach_to: PositionAttachTo.Root,
         attach_points: {
           parent: AttachPoints.LeftTop,
@@ -108,6 +112,7 @@ export default function Notepad() {
       child_layout={{
         direction: LayoutDirection.topToBottom,
       }}
+			onMouse={draggable.handleMouse}
     >
       <View
         debug_id="Notepad-header"
@@ -143,6 +148,7 @@ export default function Notepad() {
           fg_color: { hex: Colors.lightBorder },
           type: BorderType.HugVerticalFlipped,
         }}
+        onMouse={draggable.handleMouse}
       >
         <View>
           <Text

@@ -9,4 +9,5 @@ if (import.meta.hot) {
 
 export * from './solid';
 export * from './components';
+export * from './drag';
 export default MoldCore;

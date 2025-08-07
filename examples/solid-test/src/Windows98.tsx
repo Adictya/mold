@@ -12,6 +12,7 @@ import MoldCore, {
   View,
   Show,
   log,
+  useDragContext,
 } from "@mold/core";
 import Clock from "./Components/Clock";
 import StartButton from "./Components/StartButton";
@@ -21,6 +22,7 @@ import { WindowsContext, WindowsProvider } from "./WindowsContext";
 import { createSignal, useContext } from "solid-js";
 
 function App() {
+	const draggContext = useDragContext();
   const { notepadOpen, setNotepadOpen, setStartMenuOpen } =
     useContext(WindowsContext);
   addListener((event) => {
@@ -43,6 +45,7 @@ function App() {
       child_layout={{
         direction: LayoutDirection.topToBottom,
       }}
+			onMouse={draggContext.handleAreaMouse}
     >
       <Show when={notepadOpen()}>
         <Notepad />
