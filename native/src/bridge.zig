@@ -3,6 +3,7 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const renderer = @import("lib/clay-renderer.zig");
 const dom = @import("./lib/dom.zig");
+const performance = @import("./lib/performance-panel.zig");
 const breakLongWords = @import("./lib/break-text.zig").breakLongWords;
 const Component = @import("lib/components.zig");
 
@@ -87,6 +88,8 @@ pub fn tuiInit(
         g_state.tty.?.anyWriter(),
         1 * std.time.ns_per_s,
     );
+
+	performance.init();
 
     g_state.event_loop.?.start() catch {};
     g_state.running.store(true, .monotonic);
@@ -279,9 +282,11 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 g_state.render_mutex.lock();
                 defer g_state.render_mutex.unlock();
 
+                performance.updateFPS();
                 var commands: []cl.RenderCommand = &.{};
                 while (iter_depth < 2) {
                     cl.beginLayout();
+                    performance.render();
                     renderDFS(first_child, &vaxis_mouse) catch {};
                     commands = cl.endLayout();
                     const wrapNeeded = renderer.clayTerminalRenderValidate(
