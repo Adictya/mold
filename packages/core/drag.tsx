@@ -10,21 +10,37 @@ type Vector2 = {
 type DragState = {
   isDragging: boolean;
   draggedElementId: string | null;
+  onDragEnd?: () => void;
   startPosition: Vector2;
   currentOffset: Vector2;
 };
 
 type DragContextType = {
   dragState: () => DragState;
-  startDrag: (elementId: string, startPos: Vector2) => void;
+  startDrag: (
+    elementId: string,
+    startPos: Vector2,
+    callback: () => void,
+  ) => void;
   updateDrag: (newOffset: Vector2) => void;
   endDrag: () => void;
-	handleAreaMouse: MouseEventHandler;
+  handleAreaMouse: MouseEventHandler;
 };
 
-const DragContext = createContext<DragContextType>();
+const DragContext = createContext<DragContextType>({
+  dragState: () => ({
+    isDragging: false,
+    draggedElementId: null,
+    startPosition: { x: 0, y: 0 },
+    currentOffset: { x: 0, y: 0 },
+  }),
+  startDrag: () => {},
+  updateDrag: () => {},
+  endDrag: () => {},
+  handleAreaMouse: () => {},
+});
 
-export const DragProvider = (props: { children: any}) => {
+export const DragProvider = (props: { children: any }) => {
   const [dragState, setDragState] = createSignal<DragState>({
     isDragging: false,
     draggedElementId: null,
@@ -32,13 +48,18 @@ export const DragProvider = (props: { children: any}) => {
     currentOffset: { x: 0, y: 0 },
   });
 
-  const startDrag = (elementId: string, startPos: Vector2) => {
+  const startDrag = (
+    elementId: string,
+    startPos: Vector2,
+    onDragEnd: () => void,
+  ) => {
     if (dragState().isDragging) return;
 
     setDragState({
       isDragging: true,
       draggedElementId: elementId,
       startPosition: startPos,
+      onDragEnd,
       currentOffset: { x: 0, y: 0 },
     });
   };
@@ -46,7 +67,7 @@ export const DragProvider = (props: { children: any}) => {
   const updateDrag = (newOffset: Vector2) => {
     if (!dragState().isDragging) return;
 
-    setDragState(prev => ({
+    setDragState((prev) => ({
       ...prev,
       currentOffset: newOffset,
     }));
@@ -61,7 +82,7 @@ export const DragProvider = (props: { children: any}) => {
     });
   };
 
-  const handleAreaMouse: MouseEventHandler = (clayMouse, vaxisMouse, boundingBox) => {
+  const handleAreaMouse: MouseEventHandler = (clayMouse, vaxisMouse) => {
     const state = dragState();
 
     if (state.isDragging) {
@@ -72,10 +93,10 @@ export const DragProvider = (props: { children: any}) => {
         };
         updateDrag(newOffset);
       } else if (vaxisMouse.typeString === "release") {
+        state.onDragEnd?.();
         endDrag();
       }
     }
-
   };
 
   const contextValue: DragContextType = {
@@ -83,52 +104,39 @@ export const DragProvider = (props: { children: any}) => {
     startDrag,
     updateDrag,
     endDrag,
-		handleAreaMouse,
+    handleAreaMouse,
   };
 
   return (
     <DragContext.Provider value={contextValue}>
-        {props.children}
+      {props.children}
     </DragContext.Provider>
   );
 };
 
 export const useDragContext = () => {
   const context = useContext(DragContext);
-  if (!context) {
-    throw new Error("useDragContext must be used within a DragProvider");
-  }
+
   return context;
 };
 
-export const useDraggable = (elementId: string, initialPosition: Vector2) => {
+export const useDraggable = (
+  elementId: string,
+  initialPosition: Vector2,
+  initialSize: Vector2,
+) => {
   const [position, setPosition] = createSignal(initialPosition);
+  const [size, setSize] = createSignal(initialSize);
+  var localState: "moving" | "resizing" | "none" = "none";
   const dragContext = useDragContext();
-
-  const dragStart = (startPos: Vector2) => {
-    dragContext.startDrag(elementId, startPos);
-  };
-
-  const handleMouse: MouseEventHandler = (clayMouse, vaxisMouse, boundingBox) => {
-    if (vaxisMouse.typeString === "press" && vaxisMouse.buttonString === "left") {
-      dragStart(clayMouse.position);
-    } else if (vaxisMouse.typeString === "release") {
-      const state = dragContext.dragState();
-      if (state.isDragging && state.draggedElementId === elementId) {
-        // Update the base position to include the final offset
-        setPosition({
-          x: position().x + state.currentOffset.x,
-          y: position().y + state.currentOffset.y,
-        });
-      }
-      dragContext.endDrag();
-    }
-    dragContext.handleAreaMouse(clayMouse, vaxisMouse, boundingBox);
-  };
 
   const currentPosition = () => {
     const state = dragContext.dragState();
-    if (state.isDragging && state.draggedElementId === elementId) {
+    if (
+      state.isDragging &&
+      state.draggedElementId === elementId &&
+      localState == "moving"
+    ) {
       return {
         x: position().x + state.currentOffset.x,
         y: position().y + state.currentOffset.y,
@@ -137,17 +145,63 @@ export const useDraggable = (elementId: string, initialPosition: Vector2) => {
     return position();
   };
 
-  const updatePosition = (newPos: Vector2) => {
-    setPosition(newPos);
+  const currentSize = () => {
     const state = dragContext.dragState();
-    if (state.isDragging && state.draggedElementId === elementId) {
-      dragContext.endDrag();
+    if (
+      state.isDragging &&
+      state.draggedElementId === elementId &&
+      localState == "resizing"
+    ) {
+      return {
+        x: size().x + state.currentOffset.x,
+        y: size().y + state.currentOffset.y,
+      };
+    }
+    return size();
+  };
+
+  const onDragEnd = () => {
+    if (localState === "moving") {
+      setPosition(currentPosition());
+    } else if (localState === "resizing") {
+      setSize(currentSize());
+    }
+  };
+
+  const dragStart = (startPos: Vector2) => {
+    dragContext.startDrag(elementId, startPos, onDragEnd);
+  };
+
+  const handleMouse: MouseEventHandler = (
+    clayMouse,
+    vaxisMouse,
+    boundingBox,
+  ) => {
+    dragContext.handleAreaMouse(clayMouse, vaxisMouse, boundingBox);
+    const state = dragContext.dragState();
+    if (
+      vaxisMouse.typeString === "press" &&
+      vaxisMouse.buttonString === "left"
+    ) {
+      if (!state.isDragging) {
+        log.info("mouse state", { state, vaxisMouse, boundingBox });
+        if (boundingBox.y + 2 >= vaxisMouse.row) {
+          localState = "moving";
+          dragStart(clayMouse.position);
+        } else if (
+          boundingBox.x + boundingBox.width - 2 <= vaxisMouse.col &&
+          boundingBox.y + boundingBox.height - 2 <= vaxisMouse.row
+        ) {
+          localState = "resizing";
+          dragStart(clayMouse.position);
+        }
+      }
     }
   };
 
   return {
     position: currentPosition,
-    setPosition: updatePosition,
+    size: currentSize,
     dragStart,
     handleMouse,
     isDragging: () => {

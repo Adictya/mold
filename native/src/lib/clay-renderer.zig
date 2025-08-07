@@ -376,8 +376,8 @@ pub fn clayTerminalRenderValidate(
                 if (parent_comp.width <= 0) continue;
                 var max_w: u16 = parent_comp.width - 1;
                 const padding = parent_comp.view_props.padding.applyBorder(parent_comp.view_props.border.where).toClay();
-                max_w -= padding.left;
-                max_w -= padding.right;
+                if (max_w > 0) max_w -= padding.left;
+                if (max_w > 0) max_w -= padding.right;
 
                 if (config.string_contents.length < 0) continue;
                 const text = config.string_contents.chars[0..@intCast(config.string_contents.length)];

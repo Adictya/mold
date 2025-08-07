@@ -83,7 +83,7 @@ export default function Notepad() {
     "This is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog his is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog",
   );
 
-  const draggable = useDraggable("notepad", { x: 10, y: 5 });
+  const draggable = useDraggable("notepad", { x: 10, y: 5 }, { x: 60, y: 8 });
 
   addListener((event) => {
     const { text, key } = event;
@@ -98,8 +98,11 @@ export default function Notepad() {
     <View
       debug_id="Notepad-container"
       sizing={{
-        h: { minmax: { min: 8, max: 8 } },
-        w: { minmax: { min: 60, max: 60 } },
+        w: { minmax: { min: 10, max: draggable.size().x } },
+        h: { minmax: { min: draggable.size().y, max: draggable.size().y } },
+        // h: { minmax: { min: 20, max: 20 } },
+        // h: { minmax: { min: 8, max: 8 } },
+        // w: { minmax: { min: 60, max: 60 } },
       }}
       position={{
         offset: { x: draggable.position().x, y: draggable.position().y },
@@ -112,7 +115,7 @@ export default function Notepad() {
       child_layout={{
         direction: LayoutDirection.topToBottom,
       }}
-			onMouse={draggable.handleMouse}
+      onMouse={draggable.handleMouse}
     >
       <View
         debug_id="Notepad-header"
@@ -269,7 +272,7 @@ export default function Notepad() {
             debug_id="Notepad-content-container"
             sizing={{
               h: { type: SizingType.Grow },
-              w: { minmax: { min: 58, max: 58 } },
+              w: { minmax: { min: 6, max: draggable.size().x - 2 } },
             }}
             style={{
               bg_color: { hex: "#fff" },
