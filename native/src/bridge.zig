@@ -48,6 +48,7 @@ pub var g_state: struct {
     clay_memory: []u8 = undefined,
     last_rerender_time: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
     rerender_processing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    arena_allocator: std.heap.ArenaAllocator = undefined,
 } = .{};
 
 pub fn tuiInit(
@@ -59,6 +60,8 @@ pub fn tuiInit(
         std.log.debug("TTY already initialized", .{});
         return;
     }
+
+    g_state.arena_allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 
     g_state.event_callback = callback;
 
@@ -127,25 +130,32 @@ pub fn tuiInit(
     ) catch return;
 }
 
-pub fn tuiShutdown(allocator: std.mem.Allocator) void {
-    g_state.event_loop.?.stop();
-    g_state.running.store(false, .monotonic);
+pub fn tuiShutdown(_: std.mem.Allocator) void {
+    g_state.event_callback = null;
 
+    g_state.running.store(false, .monotonic);
+    g_state.event_loop.?.stop();
+    g_state.render_mutex.unlock();
+    log.err("Stopped event loop", .{});
     g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
 
-    g_state.vx.?.deinit(allocator, g_state.tty.?.anyWriter());
-    g_state.tty.?.deinit();
-
-    allocator.destroy(g_state.tty.?);
-    allocator.destroy(g_state.vx.?);
-    allocator.destroy(g_state.event_loop.?);
+    g_state.vx.?.deinit(null, g_state.tty.?.anyWriter());
+    // g_state.tty.?.deinit();
+    //
+    // g_state.arena_allocator.deinit();
+    //
+    // allocator.destroy(g_state.tty.?);
+    // allocator.destroy(g_state.vx.?);
+    // allocator.destroy(g_state.event_loop.?);
 
     // Now join the thread
     if (g_state.event_thread) |thread| {
+        log.err("Joining event thread", .{});
         thread.join();
     }
+    log.err("Joined event thread", .{});
 
-    std.process.exit(0);
+    // std.process.exit(0);
 }
 
 pub fn componentClickHandler(id: cl.ElementId, pd: cl.PointerData, user_data: *vaxis.Mouse) void {
@@ -158,15 +168,9 @@ pub fn componentClickHandler(id: cl.ElementId, pd: cl.PointerData, user_data: *v
             .clay_mouse = pd,
             .bounding_box = element_data.bounding_box,
         } };
-        g_state.event_callback.?(mouse_event);
-        // switch (pd.state) {
-        //     .pressed_this_frame => {
-        //     },
-        //     .pressed => {
-        //         // g_state.event_callback.?(mouse_event);
-        //     },
-        //     else => {},
-        // }
+        if (g_state.event_callback) |callback| {
+            callback(mouse_event);
+        }
     }
 }
 
@@ -174,7 +178,10 @@ pub fn renderDFS(
     node: *dom.DomNode,
     vaxis_mouse: *vaxis.Mouse,
 ) !void {
-    const comp = node.component;
+    var comp = try g_state.arena_allocator.allocator().create(Component);
+    comp.* = node.component.*;
+    comp.text = try g_state.arena_allocator.allocator().dupe(u8, comp.text);
+    comp.string_id = try g_state.arena_allocator.allocator().dupe(u8, comp.string_id);
     const compPtr = comp;
     const compId = comp.id;
     // log.debug("Sending component:\n{}\n</{s}>", .{ comp, comp.string_id });
@@ -290,7 +297,9 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     // -- [profile] clay start
                     performance.startClayTiming();
                     cl.beginLayout();
+                    g_state.render_mutex.lock();
                     renderDFS(first_child, &vaxis_mouse) catch {};
+                    g_state.render_mutex.unlock();
                     commands = cl.endLayout();
                     performance.endClayTiming();
                     // -- [profile] clay end
@@ -336,6 +345,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
                     log.err("Render error: {}", .{err});
                 };
+                _ = g_state.arena_allocator.reset(.retain_capacity);
                 performance.endFlushTiming();
                 performance.update();
                 // -- [profile] render flush end
@@ -344,17 +354,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
 
         g_state.rerender_processing.store(false, .monotonic);
     }
-}
-
-pub fn renderLoop() void {
-    // should run every 4.16ms
-}
-
-pub fn render(components: []const Component) !void {
-    g_state.render_mutex.lock();
-    defer g_state.render_mutex.unlock();
-    g_state.components = components;
-    g_state.event_loop.?.postEvent(.{ .rerender = true });
+    log.err("Event loop stopped", .{});
 }
 
 pub fn rerender() !void {

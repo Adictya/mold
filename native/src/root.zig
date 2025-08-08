@@ -8,6 +8,7 @@ const Component = @import("./lib/components.zig");
 const dom = @import("./lib/dom.zig");
 
 const log = std.log.scoped(.node_main);
+const mouse = std.log.scoped(.mouse);
 const performance = std.log.scoped(.performance);
 
 var log_file: std.fs.File = undefined;
@@ -22,7 +23,7 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (scope != .performance) return;
+    if (scope != .mouse) return;
     if (scope == .js_parser or scope == .dom) return;
     const scope_prefix = "\n(" ++ switch (scope) {
         .main => "main",
@@ -32,9 +33,7 @@ pub fn logFn(
     } ++ "): ";
 
     const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
-    log_file.writer().print(prefix ++ format ++ "\n", args) catch {};
-
-    // std.debug.print(prefix ++ format ++ "\n", args);
+    log_file.writer().print(prefix ++ format, args) catch {};
 }
 
 comptime {
@@ -48,7 +47,6 @@ var g_tsfn: ?napigen.napi_threadsafe_function = null;
 fn eventCallback(event: bridge.AppEvent) void {
     const event_to_send = gpa.allocator().create(bridge.AppEvent) catch unreachable;
     event_to_send.* = event;
-    std.log.debug("Calling mouse event {}", .{event_to_send});
     if (g_tsfn) |tsf| {
         _ = napigen.napi_call_threadsafe_function(
             tsf,
@@ -254,9 +252,7 @@ fn setProperty(
     switch (property) {
         .debug_id => {
             log.debug("comopnentId: {s} debug id: {s}", .{ node.component.string_id, simpleVal });
-            // Store debug_id in string_id since there's no debug_id field
             const copied_id = gpa.allocator().dupe(u8, simpleVal) catch unreachable;
-            // We'll use string_id instead since debug_id doesn't exist
             node.component.string_id = copied_id;
             return;
         },
@@ -369,18 +365,6 @@ fn setProperty(
     }
     log.debug("Updated component {}", .{node.component});
 
-    // if (std.mem.eql(u8, params.property, "textContent")) {
-    //     node.component.text = params.value;
-    // } else if (std.mem.eql(u8, params.property, "fgColor")) {
-    //     node.component.fg_color = try color.parseHexColor(params.value);
-    // } else if (std.mem.eql(u8, params.property, "bgColor")) {
-    //     node.component.bg_color = try color.parseHexColor(params.value);
-    // } else if (std.mem.eql(u8, params.property, "height")) {
-    //     node.component.height = try std.fmt.parseInt(u32, params.value, 10);
-    // } else if (std.mem.eql(u8, params.property, "width")) {
-    //     node.component.width = try std.fmt.parseInt(u32, params.value, 10);
-    // }
-
     if (node.parent != null) {
         bridge.g_state.render_mutex.unlock();
         try bridge.rerender();
@@ -432,11 +416,6 @@ fn removeNode(params: removeNodeParams) !void {
 
     dom.removeNode(parent, node);
 
-    // var next_node = node.first_child;
-    // while (next_node.next_sibling) |sibling| {
-    //     next_node = sibling.next_sibling orelse break;
-    // }
-
     try bridge.rerender();
 }
 
@@ -474,10 +453,16 @@ fn getRelatedNodes(params: getRelatedNodesParams) !?u32 {
     return null;
 }
 
-fn shutdown(_: *napigen.JsContext) void {
-    log.debug("Shutting down\n", .{});
+fn shutdown(js: *napigen.JsContext) void {
+    if (g_tsfn) |tsfn| {
+        _ = napigen.napi_release_threadsafe_function(tsfn, napigen.napi_tsfn_release);
+        g_tsfn = null;
+    }
+
+    js.deinit();
 
     bridge.tuiShutdown(gpa.allocator());
+    log.debug("Shutting down\n", .{});
 
     log_file.close();
     _ = gpa.deinit();

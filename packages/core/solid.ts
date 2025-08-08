@@ -5,9 +5,6 @@ import { log as winstonLogger } from "./logging";
 
 const log = winstonLogger.info;
 
-log("Module re-initialized for some reason");
-
-// --- HMR State Management (Global Approach) ---
 
 // Type definitions for mouse events
 type Vector2 = {
@@ -86,6 +83,8 @@ type RendererState = {
   onMouseListeners: Record<string, MouseEventHandler>;
   initialized: boolean;
 };
+
+// --- HMR State Management (Global Approach) ---
 
 // Use a unique symbol to avoid conflicts on the global object.
 const MOLD_RENDERER_STATE_KEY = Symbol.for("MOLD_RENDERER_STATE");
