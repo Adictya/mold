@@ -46,6 +46,8 @@ pub var g_state: struct {
     components: []const Component = &.{},
     clay_arena: cl.Arena = undefined,
     clay_memory: []u8 = undefined,
+    last_rerender_time: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
+    rerender_processing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 } = .{};
 
 pub fn tuiInit(
@@ -89,7 +91,7 @@ pub fn tuiInit(
         1 * std.time.ns_per_s,
     );
 
-	performance.init();
+    performance.init(@constCast(&g_state.vx.?.window()));
 
     g_state.event_loop.?.start() catch {};
     g_state.running.store(true, .monotonic);
@@ -217,9 +219,6 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
 
     while (g_state.running.load(.monotonic)) {
         const event = loop.nextEvent();
-
-        var rerender_ui = true;
-
         switch (event) {
             .winsize => |ws| {
                 g_state.render_mutex.lock();
@@ -270,8 +269,8 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     continue;
                 }
             },
-            else => {
-                rerender_ui = false;
+            .rerender => {
+                g_state.rerender_processing.store(true, .monotonic);
             },
         }
 
@@ -279,16 +278,24 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
             if (root.first_child) |first_child| {
                 var iter_depth: u8 = 0;
                 const window = g_state.vx.?.window();
-                g_state.render_mutex.lock();
-                defer g_state.render_mutex.unlock();
+                // -- [profile] lock start
+                performance.startLockTiming();
+                // g_state.render_mutex.lock();
+                // defer g_state.render_mutex.unlock();
+                performance.endLockTiming();
+                // -- [profile] lock ends
 
-                performance.updateFPS();
                 var commands: []cl.RenderCommand = &.{};
-                while (iter_depth < 2) {
+                while (iter_depth < 1) {
+                    // -- [profile] clay start
+                    performance.startClayTiming();
                     cl.beginLayout();
-                    performance.render();
                     renderDFS(first_child, &vaxis_mouse) catch {};
                     commands = cl.endLayout();
+                    performance.endClayTiming();
+                    // -- [profile] clay end
+                    // -- [profile] validate start
+                    performance.startValidateTiming();
                     const wrapNeeded = renderer.clayTerminalRenderValidate(
                         allocator,
                         @constCast(&window),
@@ -296,8 +303,10 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     ) catch |err| {
                         log.err("Render error: {}", .{err});
                         iter_depth += 1;
-                        continue;
+                        break;
                     };
+                    performance.endValidateTiming();
+                    // -- [profile] validate end
                     if (wrapNeeded) {
                         log.debug("Wrapping needed, iter:{}", .{iter_depth});
                         iter_depth += 1;
@@ -305,9 +314,11 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     }
                     break;
                 }
-                log.debug("Rendering {}", .{iter_depth});
+                // log.debug("Rendering {}", .{iter_depth});
                 window.clear();
 
+                // -- [profile] render start
+                performance.startRenderTiming();
                 renderer.clayTerminalRender(
                     @constCast(&window),
                     commands,
@@ -316,13 +327,27 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 ) catch |err| {
                     log.err("Render error: {}", .{err});
                 };
+                performance.endRenderTiming();
+                // -- [profile] render end
 
+                performance.render();
+                // -- [profile] render flush start
+                performance.startFlushTiming();
                 g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
                     log.err("Render error: {}", .{err});
                 };
+                performance.endFlushTiming();
+                performance.update();
+                // -- [profile] render flush end
             }
         }
+
+        g_state.rerender_processing.store(false, .monotonic);
     }
+}
+
+pub fn renderLoop() void {
+    // should run every 4.16ms
 }
 
 pub fn render(components: []const Component) !void {
@@ -333,5 +358,17 @@ pub fn render(components: []const Component) !void {
 }
 
 pub fn rerender() !void {
-    g_state.event_loop.?.postEvent(.{ .rerender = true });
+    const current_time = std.time.microTimestamp();
+    const last_time = g_state.last_rerender_time.load(.monotonic);
+    const time_diff = current_time - last_time;
+    const throttle_ns = 5;
+    const is_processing = g_state.rerender_processing.load(.monotonic);
+
+    if (time_diff >= throttle_ns and !is_processing) {
+        performance.trackRerenderCall();
+        g_state.last_rerender_time.store(current_time, .monotonic);
+        g_state.event_loop.?.postEvent(.{ .rerender = true });
+    } else {
+        performance.trackDroppedRerender();
+    }
 }

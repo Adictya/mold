@@ -1,6 +1,17 @@
 /* @refresh skip */
-import type { MouseEventHandler } from "./solid";
-import { mergeProps, children as resolveChildren, splitProps } from "solid-js";
+import {
+  createElement,
+  effect,
+  insert,
+  setProp,
+  type MouseEventHandler,
+} from "./solid";
+import {
+  createEffect,
+  mergeProps,
+  children as resolveChildren,
+  splitProps,
+} from "solid-js";
 
 export enum BorderType {
   SingleRounded = 0,
@@ -74,7 +85,7 @@ type ViewProps = {
     parentId?: string;
     z_index?: number;
     attach_points?: { element?: AttachPoints; parent?: AttachPoints };
-		attach_to?: PositionAttachTo;
+    attach_to?: PositionAttachTo;
   };
   sizing?: {
     w?: {
@@ -132,6 +143,41 @@ type ViewProps = {
 export const View = (props: ViewProps) => {
   const resolved = resolveChildren(() => props.children);
 
+  // return (() => {
+  //   const el = createElement("div");
+  //   insert(el, resolved);
+  //   effect(() => {
+  //     setProp(el, "position", props.position);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "sizing", props.sizing);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "padding", props.padding);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "child_layout", props.child_layout);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "scroll", props.scroll);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "style", props.style);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "border", props.border);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "debug_id", props.debug_id);
+  //   });
+  //   effect(() => {
+  //     setProp(el, "onClick", props.onClick);
+  //     setProp(el, "onMouse", props.onMouse);
+  //   });
+  //
+  //   return el;
+  // })();
+
   return (
     <div
       position={props.position}
@@ -169,21 +215,29 @@ type TextProps = {
 };
 
 export const Text = (props: TextProps) => {
-  const [children, debug_id , otherProps] = splitProps(props, ["children"], ["debug_id"]);
+  const [children, debug_id, otherProps] = splitProps(
+    props,
+    ["children"],
+    ["debug_id"],
+  );
   const resolved = resolveChildren(() => props.children);
   return (
-    <span text={resolved()} textStyle={{
-			fg_color: props.fg_color,
-			bg_color: props.bg_color,
-			ul_color: props.ul_color,
-			ul_style: props.ul_style,
-			bold: props.bold,
-			dim: props.dim,
-			italic: props.italic,
-			blink: props.blink,
-			reverse: props.reverse,
-			invisible: props.invisible,
-			strikethrough: props.strikethrough,
-		}} debug_id={debug_id} />
+    <span
+      text={resolved()}
+      textStyle={{
+        fg_color: props.fg_color,
+        bg_color: props.bg_color,
+        ul_color: props.ul_color,
+        ul_style: props.ul_style,
+        bold: props.bold,
+        dim: props.dim,
+        italic: props.italic,
+        blink: props.blink,
+        reverse: props.reverse,
+        invisible: props.invisible,
+        strikethrough: props.strikethrough,
+      }}
+      debug_id={debug_id}
+    />
   );
 };

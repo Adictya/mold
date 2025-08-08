@@ -20,9 +20,10 @@ import Colors from "./styleSheet";
 import Notepad from "./Components/Notepad";
 import { WindowsContext, WindowsProvider } from "./WindowsContext";
 import { createSignal, useContext } from "solid-js";
+import ErrorsGalore from "./Components/ErrorsGalore";
 
 function App() {
-	const draggContext = useDragContext();
+  const draggContext = useDragContext();
   const { notepadOpen, setNotepadOpen, setStartMenuOpen } =
     useContext(WindowsContext);
   addListener((event) => {
@@ -45,11 +46,12 @@ function App() {
       child_layout={{
         direction: LayoutDirection.topToBottom,
       }}
-			onMouse={draggContext.handleAreaMouse}
+      onMouse={draggContext.handleAreaMouse}
     >
       <Show when={notepadOpen()}>
         <Notepad />
       </Show>
+      <ErrorsGalore />
       <View
         debug_id="Desktop-spacer"
         sizing={{

@@ -1,6 +1,7 @@
 const Colors = {
 	lightBorder: "#dfdfdf",
 	mediumBorder: "#6d6d6d",
+	mediumLightBorder: "#8c8c8c",
 	darkBorder: "#3c3c3c",
 	text: "#222",
 	desktopBackground: "#008080",

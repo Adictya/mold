@@ -8,6 +8,7 @@ const Component = @import("./lib/components.zig");
 const dom = @import("./lib/dom.zig");
 
 const log = std.log.scoped(.node_main);
+const performance = std.log.scoped(.performance);
 
 var log_file: std.fs.File = undefined;
 
@@ -21,7 +22,8 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    if (scope == .js_parser) return;
+    if (scope != .performance) return;
+    if (scope == .js_parser or scope == .dom) return;
     const scope_prefix = "\n(" ++ switch (scope) {
         .main => "main",
         .bridge => "bridge",
@@ -228,8 +230,6 @@ fn setProperty(
     simpleVal: []const u8,
     complexVal: napigen.napi_value,
 ) anyerror!void {
-    bridge.g_state.render_mutex.lock();
-    defer bridge.g_state.render_mutex.unlock();
     var params: setPropertyParams = undefined;
     _ = try jsoParser.jsObjectToStruct(
         setPropertyParams,
@@ -244,6 +244,10 @@ fn setProperty(
     const property: propertiesEnum = @enumFromInt(params.property);
 
     const node = dom.nodeMap.get(id) orelse return;
+
+    if (node.parent != null) {
+        bridge.g_state.render_mutex.lock();
+    }
 
     log.debug("[zig]: Setting property <{s}/> {s} \n", .{ node.component.string_id, @tagName(property) });
 
@@ -377,7 +381,10 @@ fn setProperty(
     //     node.component.width = try std.fmt.parseInt(u32, params.value, 10);
     // }
 
-    try bridge.rerender();
+    if (node.parent != null) {
+        bridge.g_state.render_mutex.unlock();
+        try bridge.rerender();
+    }
 }
 
 const insertNodeParams = struct {
@@ -392,7 +399,7 @@ fn insertNode(params: insertNodeParams) !void {
     const parent = dom.nodeMap.get(params.parent) orelse return;
     const node = dom.nodeMap.get(params.node) orelse return;
 
-    log.debug("[zig]: Inserting node with tag: {s} => {}\n", .{ node.component.string_id, params });
+    performance.err("[zig]: Inserting node with tag: {s} => {}\n", .{ node.component.string_id, params });
     const anchor = if (params.anchor) |a| dom.nodeMap.get(a) else null;
 
     dom.insertNode(parent, node, anchor);
@@ -476,6 +483,9 @@ fn shutdown(_: *napigen.JsContext) void {
     _ = gpa.deinit();
 }
 
+// const start = std.time.nanoTimestamp();
+//     const renderTime = @as(f64, @floatFromInt(std.time.nanoTimestamp() - start)) / std.time.ns_per_ms;
+//     performance.err("Set property: {s} took {d:>3.3}ms", .{ node.component.string_id, renderTime });
 fn initModule(
     js: *napigen.JsContext,
     exports: napigen.napi_value,

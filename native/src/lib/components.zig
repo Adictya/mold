@@ -38,12 +38,13 @@ pub const Position = struct {
     attach_points: cl.FloatingAttachPoints = .{ .element = .left_top, .parent = .left_top },
     attach_to: cl.FloatingAttachToElement = .to_none,
 
-    pub fn toClay(self: *const Position) cl.FloatingElementConfig {
+    pub fn toClay(self: *const Position, clickable: bool) cl.FloatingElementConfig {
         return .{
             .offset = self.offset,
             .z_index = self.z_index,
             .attach_points = self.attach_points,
             .attach_to = self.attach_to,
+            .pointer_capture_mode = if (clickable) .capture else .passthrough,
         };
     }
 };
@@ -185,7 +186,7 @@ pub const ViewProps = struct {
                 .direction = self.child_layout.direction,
             },
             .background_color = self.style.bg_color.toClay(),
-            .floating = self.position.toClay(),
+            .floating = self.position.toClay(self.clickable),
             .border = self.border.toClay(),
             .clip = .{
                 .horizontal = self.scroll.horizontal,

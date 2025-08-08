@@ -201,6 +201,7 @@ export const useDraggable = (
 
   return {
     position: currentPosition,
+		updatePosition: setPosition,
     size: currentSize,
     dragStart,
     handleMouse,
