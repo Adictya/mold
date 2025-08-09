@@ -6,7 +6,7 @@ import solid from "babel-preset-solid";
 
 await Bun.build({
   entrypoints: ["./index.tsx"],
-  target: "bun",
+  target: "node",
   plugins: [
     {
       name: "bun-plugin-solid",
