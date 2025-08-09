@@ -24,7 +24,7 @@ import ErrorsGalore from "./Components/ErrorsGalore";
 
 function App() {
   const draggContext = useDragContext();
-  const { notepadOpen, setNotepadOpen, setStartMenuOpen } =
+  const { notepadOpen, setStartMenuOpen, errorScene, setErrorScene } =
     useContext(WindowsContext);
   addListener((event) => {
     const { text, key, mods } = event;
@@ -51,7 +51,9 @@ function App() {
       <Show when={notepadOpen()}>
         <Notepad />
       </Show>
-      <ErrorsGalore />
+      <Show when={errorScene()}>
+        <ErrorsGalore />
+      </Show>
       <View
         debug_id="Desktop-spacer"
         sizing={{

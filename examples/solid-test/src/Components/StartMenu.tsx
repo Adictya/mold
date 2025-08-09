@@ -1,4 +1,4 @@
-import {
+import MoldCore, {
   addListener,
   AttachPoints,
   BorderType,
@@ -266,7 +266,10 @@ export default function StartMenu() {
           <StartMenuButton pad icon="📕" label="Help" />
           {/* <StartMenuButton icon="⍰" label="Help" iconColor="#A020F0" /> */}
           <StartMenuButton pad icon="🔓" label="Log Off" />
-          <StartMenuButton icon="⏻" label="Shutdown" iconColor="#a22" />
+          <StartMenuButton icon="⏻" label="Shutdown" iconColor="#a22" onClick={() => {
+						MoldCore.shutdown();
+						process.exit(0);
+					}} />
         </View>
       </View>
     </View>

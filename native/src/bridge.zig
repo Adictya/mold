@@ -40,6 +40,7 @@ pub var g_state: struct {
     vx: ?*vaxis.Vaxis = null,
     event_loop: ?*vaxis.Loop(EventType) = null,
     event_thread: ?std.Thread = null,
+    scheduler_thread: ?std.Thread = null,
     event_callback: ?*const fn (AppEvent) void = null,
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     render_mutex: std.Thread.Mutex = .{},
@@ -48,6 +49,7 @@ pub var g_state: struct {
     clay_memory: []u8 = undefined,
     last_rerender_time: std.atomic.Value(i64) = std.atomic.Value(i64).init(0),
     rerender_processing: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    has_pending_changes: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     arena_allocator: std.heap.ArenaAllocator = undefined,
 } = .{};
 
@@ -94,8 +96,6 @@ pub fn tuiInit(
         1 * std.time.ns_per_s,
     );
 
-    performance.init(@constCast(&g_state.vx.?.window()));
-
     g_state.event_loop.?.start() catch {};
     g_state.running.store(true, .monotonic);
 
@@ -128,6 +128,12 @@ pub fn tuiInit(
         tuiEventLoop,
         .{allocator},
     ) catch return;
+
+    g_state.scheduler_thread = std.Thread.spawn(
+        .{},
+        schedulerLoop,
+        .{},
+    ) catch return;
 }
 
 pub fn tuiShutdown(_: std.mem.Allocator) void {
@@ -140,7 +146,7 @@ pub fn tuiShutdown(_: std.mem.Allocator) void {
     g_state.vx.?.exitAltScreen(g_state.tty.?.anyWriter()) catch {};
 
     g_state.vx.?.deinit(null, g_state.tty.?.anyWriter());
-    // g_state.tty.?.deinit();
+    g_state.tty.?.deinit();
     //
     // g_state.arena_allocator.deinit();
     //
@@ -148,12 +154,18 @@ pub fn tuiShutdown(_: std.mem.Allocator) void {
     // allocator.destroy(g_state.vx.?);
     // allocator.destroy(g_state.event_loop.?);
 
-    // Now join the thread
+    // Now join the threads
     if (g_state.event_thread) |thread| {
         log.err("Joining event thread", .{});
         thread.join();
     }
     log.err("Joined event thread", .{});
+
+    if (g_state.scheduler_thread) |thread| {
+        log.err("Joining scheduler thread", .{});
+        thread.join();
+    }
+    log.err("Joined scheduler thread", .{});
 
     // std.process.exit(0);
 }
@@ -209,6 +221,20 @@ pub fn renderDFS(
     }
     if (node.next_sibling) |sibling| {
         try renderDFS(sibling, vaxis_mouse);
+    }
+}
+
+fn schedulerLoop() void {
+    while (g_state.running.load(.monotonic)) {
+        std.time.sleep(3 * std.time.ns_per_ms);
+        if (g_state.has_pending_changes.swap(false, .monotonic)) {
+            if (g_state.rerender_processing.load(.monotonic)) {
+                performance.trackDroppedRerender();
+                continue;
+            }
+            performance.trackRerenderCall();
+            g_state.event_loop.?.postEvent(.{ .rerender = true });
+        }
     }
 }
 
@@ -280,21 +306,13 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 g_state.rerender_processing.store(true, .monotonic);
             },
         }
-
         if (dom.root) |root| {
             if (root.first_child) |first_child| {
                 var iter_depth: u8 = 0;
                 const window = g_state.vx.?.window();
-                // -- [profile] lock start
-                performance.startLockTiming();
-                // g_state.render_mutex.lock();
-                // defer g_state.render_mutex.unlock();
-                performance.endLockTiming();
-                // -- [profile] lock ends
 
                 var commands: []cl.RenderCommand = &.{};
                 while (iter_depth < 1) {
-                    // -- [profile] clay start
                     performance.startClayTiming();
                     cl.beginLayout();
                     g_state.render_mutex.lock();
@@ -302,8 +320,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     g_state.render_mutex.unlock();
                     commands = cl.endLayout();
                     performance.endClayTiming();
-                    // -- [profile] clay end
-                    // -- [profile] validate start
+
                     performance.startValidateTiming();
                     const wrapNeeded = renderer.clayTerminalRenderValidate(
                         allocator,
@@ -315,7 +332,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                         break;
                     };
                     performance.endValidateTiming();
-                    // -- [profile] validate end
+
                     if (wrapNeeded) {
                         log.debug("Wrapping needed, iter:{}", .{iter_depth});
                         iter_depth += 1;
@@ -326,7 +343,6 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 // log.debug("Rendering {}", .{iter_depth});
                 window.clear();
 
-                // -- [profile] render start
                 performance.startRenderTiming();
                 renderer.clayTerminalRender(
                     @constCast(&window),
@@ -337,10 +353,10 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                     log.err("Render error: {}", .{err});
                 };
                 performance.endRenderTiming();
-                // -- [profile] render end
 
                 performance.render();
-                // -- [profile] render flush start
+
+                performance.updateFPS(@constCast(&window)) catch {};
                 performance.startFlushTiming();
                 g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
                     log.err("Render error: {}", .{err});
@@ -348,7 +364,6 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 _ = g_state.arena_allocator.reset(.retain_capacity);
                 performance.endFlushTiming();
                 performance.update();
-                // -- [profile] render flush end
             }
         }
 
@@ -358,17 +373,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
 }
 
 pub fn rerender() !void {
-    const current_time = std.time.microTimestamp();
-    const last_time = g_state.last_rerender_time.load(.monotonic);
-    const time_diff = current_time - last_time;
-    const throttle_ns = 5;
-    const is_processing = g_state.rerender_processing.load(.monotonic);
-
-    if (time_diff >= throttle_ns and !is_processing) {
-        performance.trackRerenderCall();
-        g_state.last_rerender_time.store(current_time, .monotonic);
-        g_state.event_loop.?.postEvent(.{ .rerender = true });
-    } else {
-        performance.trackDroppedRerender();
+    if (!g_state.has_pending_changes.load(.monotonic)) {
+        g_state.has_pending_changes.store(true, .monotonic);
     }
 }

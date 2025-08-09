@@ -45,7 +45,7 @@ export default function ErrorsGalore() {
       <View
         debug_id="ErrorsGalore-counter"
         position={{
-          offset: { x: 15, y: 1 },
+          offset: { x: 15, y: 0 },
           attach_to: PositionAttachTo.Root,
           attach_points: {
             parent: AttachPoints.LeftTop,
@@ -54,7 +54,7 @@ export default function ErrorsGalore() {
           z_index: 10,
         }}
         padding={{
-          left: 1,
+          left: 0,
         }}
         style={{
           bg_color: { hex: Colors.text },
@@ -64,7 +64,7 @@ export default function ErrorsGalore() {
           fg_color={{ hex: Colors.lightBorder }}
           bg_color={{ hex: Colors.text }}
         >
-          Errors: {errors().length}
+          | Errors: {errors().length}
         </Text>
       </View>
       <For each={errors()}>

@@ -5,16 +5,21 @@ export const WindowsContext = createContext<{
   setNotepadOpen: (open: boolean) => boolean;
 	startMenuOpen: Accessor<boolean>;
 	setStartMenuOpen: (open: any) => boolean;
+	errorScene: Accessor<boolean>;
+	setErrorScene: (open: any) => boolean;
 }>({
   notepadOpen: () => false,
   setNotepadOpen: () => false,
 	startMenuOpen: () => false,
 	setStartMenuOpen: () => false,
+	errorScene: () => false,
+	setErrorScene: () => false,
 });
 
 export function WindowsProvider(props: { children: any }) {
   const [notepadOpen, setNotepadOpen] = createSignal(false);
 	const [startMenuOpen, setStartMenuOpen] = createSignal(false);
+	const [errorScene, setErrorScene] = createSignal(false);
 
   return (
     <WindowsContext.Provider
@@ -23,6 +28,8 @@ export function WindowsProvider(props: { children: any }) {
         setNotepadOpen,
 				startMenuOpen,
 				setStartMenuOpen,
+				errorScene,
+				setErrorScene,
       }}
     >
       {props.children}

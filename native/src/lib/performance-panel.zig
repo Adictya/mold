@@ -6,6 +6,9 @@ const component = @import("./components.zig");
 const log = std.log.scoped(.performance);
 
 var performanceBuffer: [256]u8 = "                                                                                                                                                                                                                                                                ".*;
+var frametimeBuffer: [25]u8 = "                         ".*;
+pub var lastFrameStart: f64 = 0;
+
 pub var lastFrameTime: f64 = 0;
 
 var lockStartTime: i128 = 0;
@@ -22,12 +25,6 @@ var flushTime: f64 = 0;
 
 var rerenderCalls: u64 = 0;
 var droppedRerenders: u64 = 0;
-
-var win: ?*vaxis.Window = null;
-
-pub fn init(window: *vaxis.Window) void {
-    win = window;
-}
 
 pub fn startLockTiming() void {
     lockStartTime = std.time.nanoTimestamp();
@@ -106,6 +103,37 @@ pub fn update() void {
         @min(lastFrameTime, 99.0),
         rerenderCalls,
         droppedRerenders,
+    });
+}
+
+pub fn updateFPS(win: *vaxis.Window) !void {
+    const currentTime = std.time.nanoTimestamp();
+    const currentTimeF = @as(f64, @floatFromInt(currentTime)) / std.time.ns_per_s;
+
+    // Initialize on first call
+    if (lastFrameStart == 0) {
+        lastFrameStart = currentTimeF;
+        return;
+    }
+
+    // Calculate frame time delta
+    const deltaTime = currentTimeF - lastFrameStart;
+    lastFrameStart = currentTimeF;
+
+    // Convert to milliseconds and display
+    const frameTimeMs = deltaTime * 1000.0;
+    const frameStr = try std.fmt.bufPrint(&frametimeBuffer, "Frame: {d:>3.3}ms", .{@min(frameTimeMs, 99.0)});
+
+    _ = win.printSegment(.{
+        .text = frameStr,
+        .style = .{
+            .fg = .{ .rgb = .{ 255, 255, 255 } },
+            .bg = .{ .rgb = .{ 0, 0, 0 } },
+        },
+    }, .{
+        .row_offset = 0,
+        .col_offset = 0,
+        .commit = true,
     });
 }
 

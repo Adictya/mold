@@ -39,12 +39,13 @@ pub const Position = struct {
     attach_to: cl.FloatingAttachToElement = .to_none,
 
     pub fn toClay(self: *const Position, clickable: bool) cl.FloatingElementConfig {
+        _ = clickable;
         return .{
             .offset = self.offset,
             .z_index = self.z_index,
             .attach_points = self.attach_points,
             .attach_to = self.attach_to,
-            .pointer_capture_mode = if (clickable) .capture else .passthrough,
+            // .pointer_capture_mode = if (clickable) .capture else .passthrough,
         };
     }
 };
