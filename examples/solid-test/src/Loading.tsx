@@ -63,7 +63,7 @@ export default function Loading() {
     } else {
       setShift((s) => s + 1);
     }
-  }, 50);
+  }, 100);
 
   onCleanup(() => {
     clearInterval(interval);

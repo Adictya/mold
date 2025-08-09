@@ -7,10 +7,10 @@ import Loading from "./Loading";
 import { DragProvider } from "@mold/core";
 
 function App() {
-  const [route, setRoute] = createSignal("windows98");
+  const [route, setRoute] = createSignal("bootloader");
 
-  // setTimeout(() => setRoute("loading"), 3000);
-  // setTimeout(() => setRoute("windows98"), 7000);
+  setTimeout(() => setRoute("loading"), 3000);
+  setTimeout(() => setRoute("windows98"), 7000);
 
   return (
     <DragProvider>

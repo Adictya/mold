@@ -354,9 +354,7 @@ fn tuiEventLoop(allocator: std.mem.Allocator) void {
                 };
                 performance.endRenderTiming();
 
-                performance.render();
-
-                performance.updateFPS(@constCast(&window)) catch {};
+                // performance.updateFPS(@constCast(&window)) catch {};
                 performance.startFlushTiming();
                 g_state.vx.?.render(g_state.tty.?.anyWriter()) catch |err| {
                     log.err("Render error: {}", .{err});

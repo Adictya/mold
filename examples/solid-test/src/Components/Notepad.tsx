@@ -78,12 +78,23 @@ const MenuBarButton = ({
 };
 
 export default function Notepad() {
-  const { setNotepadOpen } = useContext(WindowsContext);
+  const { setErrorScene, setNotepadOpen, notepadDraggable: draggable } = useContext(WindowsContext);
   const [text, setText] = createSignal(
-    "This is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog his is a really long sentence that should get wrapped.\nThe quick brown fox jumped over the lazy dog",
+    `Introducing MOLD!
+A performance oriented TUI library for Javascript
+- Write your UI with Solidjs
+- powered by a Zig core implementation
+- With blazing fast flex box like layouting with CLAY
+- And double buffered cross-platform terminal rendering with libVaxis.
+
+
+
+
+Yes it scrolls!
+and wait,`,
   );
 
-  const draggable = useDraggable("notepad", { x: 10, y: 5 }, { x: 60, y: 8 });
+  // const draggable = useDraggable("notepad", { x: 10, y: 5 }, { x: 60, y: 8 });
 
   addListener((event) => {
     const { text, key } = event;
@@ -151,7 +162,6 @@ export default function Notepad() {
           fg_color: { hex: Colors.lightBorder },
           type: BorderType.HugVerticalFlipped,
         }}
-        onMouse={draggable.handleMouse}
       >
         <View>
           <Text
@@ -176,6 +186,7 @@ export default function Notepad() {
           icon="⚔︎"
           onClick={() => {
             setNotepadOpen(false);
+						setErrorScene(true);
           }}
         />
         <Text
