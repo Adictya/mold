@@ -5,10 +5,9 @@
   "type": "module",
   "module": "index.tsx",
   "scripts": {
-    "dev": "VITE_NODE_DEBUG_DUMP=true bun run ./build-script/build.ts",
-    "build": "bun run build.ts",
-    "start": "bun run ./dist/index.js",
-    "preview": "vite preview"
+    "dev": "VITE_NODE_DEBUG_DUMP=true bun run ./scripts/dev.ts",
+    "build": "bun run ./scripts/build.ts",
+    "start": "bun run ./dist/index.js"
   },
   "dependencies": {
     "@mold/core": "workspace:*",
