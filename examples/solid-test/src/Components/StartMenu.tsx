@@ -159,6 +159,7 @@ export default function StartMenu() {
       child_layout={{
         direction: LayoutDirection.topToBottom,
       }}
+			onClick={() => {}}
     >
       <View
         debug_id="start-menu-content-container"

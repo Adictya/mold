@@ -28,7 +28,7 @@ export default function Clock() {
   const [time, setTime] = createSignal(getCurrentTime());
 
   const interval = setInterval(() => {
-    // setTime(getCurrentTime());
+    setTime(getCurrentTime());
   }, 1000);
 
   onCleanup(() => {

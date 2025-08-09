@@ -11,29 +11,8 @@ import ErrorDialog from "./Error";
 import Colors from "../styleSheet";
 
 export default function ErrorsGalore() {
-  const draggable = useDraggable("error", { x: 0, y: 0 }, { x: 60, y: 8 });
+  const draggable = useDraggable("error", { x: 30, y: 30 }, { x: 60, y: 8 });
   const [errors, setErrors] = createSignal<Vector2[]>([]);
-
-  // var interval: any;
-
-  // onMount(() => {
-  //   interval = setInterval(() => {
-  //     draggable.updatePosition((cur) => ({
-  //       x: cur.y > 50 ? cur.x + 10: cur.x ,
-  //       y: cur.y > 50 ? 0 : cur.y +1,
-  //     }));
-  //   }, 1);
-  // });
-  //
-  // createEffect(() => {
-  //   if (errors().length > 400) {
-  //     clearInterval(interval);
-  //   }
-  // });
-
-  // onCleanup(() => {
-  //   clearInterval(interval);
-  // });
 
   createEffect(() => {
     const { x, y } = draggable.position();
