@@ -1,4 +1,4 @@
-import { createServer } from "vite";
+import { createServer, version as viteVersion } from "vite";
 import {
   createHotContext,
   viteNodeHmrPlugin,
@@ -25,7 +25,9 @@ const runner = new ViteNodeRunner({
   root: server.config.root,
   base: server.config.base,
   createHotContext(runner, url) {
-    return createHotContext(runner, server.emitter, files, url);
+    const ctx = createHotContext(runner, server.emitter, files, url);
+    ctx.aditya = true;
+    return ctx;
   },
   fetchModule(id) {
     return node.fetchModule(id, "web");
@@ -45,7 +47,7 @@ const transformPath = (fromPath, dirname) => {
   if (fromPath.startsWith("/@fs/")) {
     return fromPath.substring(4);
   } else if (fromPath.startsWith("/src/")) {
-    const projectRoot = dirname.replace(/\/scripts$/, "");
+    const projectRoot = dirname.replace(/\/build-script$/, "");
     return `${projectRoot}${fromPath}`;
   }
   return fromPath;
