@@ -4,6 +4,8 @@ A high-performance TUI library with a Zig core, SolidJS frontend, and blazingly 
 
 ⚠️ **Alpha Software** - This is a first working proof-of-concept. Nothing is finalized.
 
+![showcase](https://github.com/Adictya/mold/raw/refs/heads/main/readme-stuff/hmr-showcase.mp4)
+
 ## Features
 
 - **Zig-based core** exposed via Node API using [napigen](https://github.com/cztomsik/napigen)
