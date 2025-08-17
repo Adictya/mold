@@ -40,6 +40,7 @@ Requires Bun and Zig installed.
 
 ```bash
 bun run build:native
+bun install
 cd examples/solid-test
 bun run dev
 ```
