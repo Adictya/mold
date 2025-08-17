@@ -39,7 +39,7 @@ https://github.com/user-attachments/assets/904644d5-c76d-4ce2-84bf-7e524e1af970
 Requires Bun and Zig installed.
 
 ```bash
-bun run build
+bun run build:native
 cd examples/solid-test
 bun run dev
 ```
