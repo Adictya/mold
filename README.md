@@ -1,4 +1,4 @@
-⚠️ **OpenTui** - Check out [sst/opentui](https://github.com/sst/opentui) for a production ready solidjs temrinal rendering library
+⚠️ **OpenTui** - Check out [sst/opentui](https://github.com/sst/opentui) for a production ready solidjs terminal rendering library
 
 # Mold
 
