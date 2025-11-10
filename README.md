@@ -1,3 +1,5 @@
+⚠️ **OpenTui** - Check out [sst/opentui](https://github.com/sst/opentui) for a production ready solidjs temrinal rendering library
+
 # Mold
 
 A high-performance TUI library with a Zig core, SolidJS frontend, and blazingly fast flexbox-like layouting.
